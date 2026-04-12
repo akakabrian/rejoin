@@ -3,7 +3,9 @@
     class="session-row{% if s.pinned %} pinned{% endif %}{% if s.active %} active{% endif %}"
     data-session-id="{{ s.id }}">
   <td class="tool-col">
-    {% if s.pinned %}<span class="pin-marker" title="pinned">★</span>{% endif %}
+    <button class="row-pin pin-btn {% if s.pinned %}pinned{% endif %}"
+            data-session-id="{{ s.id }}"
+            title="{% if s.pinned %}unpin{% else %}pin{% endif %}">★</button>
     <span class="tag tag-{{ s.tool }}">{{ s.tool }}</span>
     {% if s.active %}<span class="active-dot" title="activity in the last 2 min"></span>{% endif %}
   </td>

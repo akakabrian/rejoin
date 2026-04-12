@@ -542,13 +542,6 @@ main {
 }
 
 /* ---------- pin ---------- */
-.pin-marker {
-  color: var(--crail);
-  font-size: 11px;
-  margin-right: 4px;
-  display: inline-block;
-  vertical-align: middle;
-}
 .pin-btn {
   background: transparent;
   border: none;
@@ -572,6 +565,19 @@ main {
 }
 .session-row.pinned { background: var(--crail-soft); }
 .session-row.pinned:hover { background: rgba(193, 95, 60, 0.16); }
+
+/* compact row-level star — very faint until hovered, full amber when pinned */
+.row-pin {
+  font-size: 14px;
+  padding: 0 6px 0 0;
+  vertical-align: 0;
+  color: var(--border);
+  transition: color 0.1s, transform 0.1s;
+}
+.session-row:hover .row-pin { color: var(--cloudy); }
+.row-pin.pinned,
+.session-row:hover .row-pin.pinned { color: var(--crail); }
+.row-pin:hover { color: var(--crail) !important; transform: scale(1.2); }
 
 /* ---------- search highlight ---------- */
 mark {
