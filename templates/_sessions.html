@@ -13,7 +13,7 @@
       <div class="subtitle muted">last: {{ s.last_prompt[:90] | highlight(q) }}</div>
     {% endif %}
   </td>
-  <td class="cwd">{{ (s.cwd or "").replace("/home/brian", "~") }}</td>
+  <td class="cwd">{{ s.cwd | short_cwd }}</td>
   <td class="muted nowrap">{{ s.last_activity[:10] if s.last_activity else "" }}<br><span class="tm">{{ s.last_activity[11:16] if s.last_activity else "" }}</span></td>
   <td class="num">{{ s.message_count }}</td>
   <td class="num">{{ s.tool_call_count }}</td>
@@ -24,7 +24,7 @@
   {% for g in groups %}
     <div class="cwd-group">
       <div class="cwd-group-header">
-        <span class="cwd-group-path">{{ g.cwd.replace("/home/brian", "~") if not g.pinned_group else g.cwd }}</span>
+        <span class="cwd-group-path">{{ g.cwd if g.pinned_group else (g.cwd | short_cwd) }}</span>
         <span class="cwd-group-count">{{ g.sessions|length }}</span>
       </div>
       <table class="session-table">

@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
-from datetime import datetime, timezone
 
 import httpx
 
+from .common import utcnow_iso
 from .config import (
     OPENROUTER_BASE_URL,
     OPENROUTER_MODEL,
@@ -96,7 +95,7 @@ async def _title_one(
                 "session_id": row["id"],
                 "title": title,
                 "content_hash": chash,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": utcnow_iso(),
                 "tokens_in": tin,
                 "tokens_out": tout,
             }
@@ -105,7 +104,7 @@ async def _title_one(
                 "session_id": row["id"],
                 "title": _fallback_title(row["first_prompt"]),
                 "content_hash": chash,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": utcnow_iso(),
                 "tokens_in": 0,
                 "tokens_out": 0,
                 "_error": str(e),

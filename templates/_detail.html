@@ -11,7 +11,7 @@
       <p class="muted meta">
         <span class="tag tag-{{ s.tool }}">{{ s.tool }}</span>
         · {{ s.model or "?" }}
-        · {{ (s.cwd or "").replace("/home/brian", "~") }}
+        · {{ s.cwd | short_cwd }}
         · {{ s.last_activity[:19] if s.last_activity else "" }}
       </p>
     </div>

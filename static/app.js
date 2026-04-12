@@ -41,7 +41,6 @@ async function togglePin(sessionId, btn) {
     btn.classList.toggle("pinned", data.pinned);
     btn.title = data.pinned ? "unpin" : "pin";
   }
-  // refresh the session list so pinned rows move to the top
   const form = document.getElementById("filters");
   if (form) htmx.trigger(form, "submit");
 }
@@ -51,7 +50,6 @@ function resumeSelected() {
   if (btn && !btn.disabled) btn.click();
 }
 
-// restore selection after the list re-renders
 document.body.addEventListener("htmx:afterSwap", (e) => {
   if (e.target.id === "session-list" && selectedSessionId) {
     const row = document.querySelector(`.session-row[data-session-id="${selectedSessionId}"]`);
@@ -133,8 +131,7 @@ document.addEventListener("keydown", (e) => {
     const pin = document.querySelector(".pin-btn[data-session-id]");
     if (pin) { e.preventDefault(); togglePin(pin.dataset.sessionId, pin); }
   }
-  else if (e.key === "g" && selectedSessionId === null) {
-    // jump to top
+  else if (e.key === "g") {
     const rows = allRows();
     if (rows.length) { markSelected(rows[0]); htmx.trigger(rows[0], "click"); }
   }

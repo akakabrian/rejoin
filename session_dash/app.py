@@ -5,6 +5,7 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
@@ -13,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 
+from .common import Tool, iso_to_epoch, short_cwd, utcnow_iso
 from .db import connect, init_db
 from .indexer import reindex
 from .resume import launch_tmux, resume_command
@@ -26,19 +28,11 @@ log = logging.getLogger("session_dash")
 REFRESH_INTERVAL_SEC = 60
 DEFAULT_TRANSCRIPT_TAIL = 40
 ACTIVE_WINDOW_SECONDS = 120
-
-
-def _iso_to_epoch(s: str | None) -> float:
-    if not s:
-        return 0.0
-    try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
-    except Exception:
-        return 0.0
+TURN_CACHE_SIZE = 16
 
 
 def _is_active(last_activity: str | None, now_epoch: float) -> bool:
-    ts = _iso_to_epoch(last_activity)
+    ts = iso_to_epoch(last_activity)
     return bool(ts) and (now_epoch - ts) < ACTIVE_WINDOW_SECONDS
 
 
@@ -62,13 +56,21 @@ def _highlight(text: str | None, q: str | None) -> Markup:
 
 
 TEMPLATES.env.filters["highlight"] = _highlight
+TEMPLATES.env.filters["short_cwd"] = short_cwd
+
+
+@lru_cache(maxsize=TURN_CACHE_SIZE)
+def _load_turns_cached(tool: Tool, path_str: str, mtime: float):
+    # mtime is part of the key so the cache invalidates when the file grows.
+    return load_turns(tool, Path(path_str))
 
 
 async def _refresh_loop() -> None:
     while True:
         try:
             stats = await asyncio.to_thread(reindex, False)
-            changed = stats["claude_new"] + stats["claude_updated"] + stats["codex_new"] + stats["codex_updated"]
+            changed = (stats["claude_new"] + stats["claude_updated"]
+                       + stats["codex_new"] + stats["codex_updated"])
             if changed:
                 log.info("refresh: %s", stats)
                 await backfill_titles()
@@ -97,16 +99,14 @@ def _fetch_sessions(
     q: str | None,
     limit: int = 200,
 ) -> list[dict]:
-    where = []
-    params: dict = {}
+    where: list[str] = []
+    params: dict = {"limit": limit}
     if tool:
-        where.append("s.tool = :tool")
-        params["tool"] = tool
+        where.append("s.tool = :tool"); params["tool"] = tool
     if cwd:
-        where.append("s.cwd = :cwd")
-        params["cwd"] = cwd
+        where.append("s.cwd = :cwd"); params["cwd"] = cwd
 
-    base = """
+    sql = """
         SELECT s.*, t.title as ai_title,
                p.pinned_at IS NOT NULL as pinned,
                p.pinned_at as pinned_at
@@ -115,34 +115,28 @@ def _fetch_sessions(
         LEFT JOIN pins p ON p.session_id = s.id
     """
     if q:
-        sql = base + """
-            JOIN session_fts f ON f.session_id = s.id
-            WHERE session_fts MATCH :q
-        """
+        sql += " JOIN session_fts f ON f.session_id = s.id WHERE session_fts MATCH :q"
         params["q"] = q
         if where:
             sql += " AND " + " AND ".join(where)
-    else:
-        sql = base
-        if where:
-            sql += " WHERE " + " AND ".join(where)
+    elif where:
+        sql += " WHERE " + " AND ".join(where)
     sql += """
         ORDER BY (p.pinned_at IS NOT NULL) DESC,
                  p.pinned_at DESC,
                  s.last_activity DESC
         LIMIT :limit
     """
-    params["limit"] = limit
 
     now_epoch = datetime.now(timezone.utc).timestamp()
     with connect() as conn:
         rows = conn.execute(sql, params).fetchall()
-        out = []
-        for r in rows:
-            d = dict(r)
-            d["active"] = _is_active(d.get("last_activity"), now_epoch)
-            out.append(d)
-        return out
+    out: list[dict] = []
+    for r in rows:
+        d = dict(r)
+        d["active"] = _is_active(d.get("last_activity"), now_epoch)
+        out.append(d)
+    return out
 
 
 def _distinct_cwds() -> list[str]:
@@ -152,14 +146,50 @@ def _distinct_cwds() -> list[str]:
         )]
 
 
+def _get_session(session_id: str) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT s.*, t.title as ai_title, p.pinned_at IS NOT NULL as pinned
+               FROM sessions s
+               LEFT JOIN titles t ON t.session_id = s.id
+               LEFT JOIN pins p ON p.session_id = s.id
+               WHERE s.id = :id""",
+            {"id": session_id},
+        ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["active"] = _is_active(d.get("last_activity"),
+                             datetime.now(timezone.utc).timestamp())
+    return d
+
+
+def _group_by_cwd(sessions: list[dict]) -> list[dict]:
+    pinned = [s for s in sessions if s.get("pinned")]
+    others = [s for s in sessions if not s.get("pinned")]
+    others.sort(key=lambda s: (s.get("cwd") or "~", -iso_to_epoch(s.get("last_activity"))))
+
+    groups: list[dict] = []
+    if pinned:
+        groups.append({"cwd": "★ pinned", "sessions": pinned, "pinned_group": True})
+
+    current: dict | None = None
+    for s in others:
+        c = s.get("cwd") or "(no cwd)"
+        if current is None or current["cwd"] != c:
+            current = {"cwd": c, "sessions": []}
+            groups.append(current)
+        current["sessions"].append(s)
+    return groups
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     sessions = _fetch_sessions(None, None, None)
-    cwds = _distinct_cwds()
     return TEMPLATES.TemplateResponse(
         request, "index.html",
-        {"sessions": sessions, "groups": [], "cwds": cwds,
-         "filters": {}, "q": None, "group": False},
+        {"sessions": sessions, "groups": [], "cwds": _distinct_cwds(),
+         "q": None, "group": False},
     )
 
 
@@ -172,25 +202,7 @@ def sessions_fragment(
     group: bool = Query(False),
 ) -> HTMLResponse:
     sessions = _fetch_sessions(tool or None, cwd or None, q or None)
-
-    groups: list[dict] = []
-    if group:
-        # keep pinned sessions together at the top, then group the rest by cwd
-        pinned = [s for s in sessions if s.get("pinned")]
-        others = [s for s in sessions if not s.get("pinned")]
-        if pinned:
-            groups.append({"cwd": "★ pinned", "sessions": pinned, "pinned_group": True})
-        others.sort(key=lambda s: (s.get("cwd") or "~", -_iso_to_epoch(s.get("last_activity"))))
-        cur_cwd: object = object()
-        cur_group: dict | None = None
-        for s in others:
-            c = s.get("cwd") or "(no cwd)"
-            if c != cur_cwd:
-                cur_cwd = c
-                cur_group = {"cwd": c, "sessions": []}
-                groups.append(cur_group)
-            cur_group["sessions"].append(s)
-
+    groups = _group_by_cwd(sessions) if group else []
     return TEMPLATES.TemplateResponse(
         request, "_sessions.html",
         {"sessions": sessions, "groups": groups, "q": q, "group": group},
@@ -203,21 +215,11 @@ def session_detail(
     session_id: str,
     full: bool = Query(False),
 ) -> HTMLResponse:
-    with connect() as conn:
-        row = conn.execute(
-            """SELECT s.*, t.title as ai_title, p.pinned_at IS NOT NULL as pinned
-               FROM sessions s
-               LEFT JOIN titles t ON t.session_id=s.id
-               LEFT JOIN pins p ON p.session_id=s.id
-               WHERE s.id=:id""",
-            {"id": session_id},
-        ).fetchone()
+    row = _get_session(session_id)
     if not row:
         return HTMLResponse("<p>not found</p>", status_code=404)
-    row_d = dict(row)
-    row_d["active"] = _is_active(row_d.get("last_activity"),
-                                 datetime.now(timezone.utc).timestamp())
-    all_turns = load_turns(row_d["tool"], Path(row_d["path"]))
+
+    all_turns = _load_turns_cached(row["tool"], row["path"], row["mtime"] or 0.0)
     total = len(all_turns)
     if full or total <= DEFAULT_TRANSCRIPT_TAIL:
         turns = all_turns
@@ -239,27 +241,22 @@ def session_detail(
     if buf:
         blocks.append({"kind": "tools", "turns": buf})
 
-    cmd = resume_command(row_d["tool"], row_d["id"], row_d["cwd"])
+    cmd = resume_command(row["tool"], row["id"], row["cwd"])
     return TEMPLATES.TemplateResponse(
         request, "_detail.html",
-        {
-            "s": row_d,
-            "blocks": blocks,
-            "resume_cmd": cmd,
-            "hidden": hidden,
-            "total": total,
-        },
+        {"s": row, "blocks": blocks, "resume_cmd": cmd,
+         "hidden": hidden, "total": total},
     )
 
 
 @app.post("/session/{session_id}/pin")
 def session_pin(session_id: str) -> JSONResponse:
-    now = datetime.now(timezone.utc).isoformat()
+    now = utcnow_iso()
     with connect() as conn:
-        exists = conn.execute(
+        existing = conn.execute(
             "SELECT 1 FROM pins WHERE session_id=:id", {"id": session_id}
         ).fetchone()
-        if exists:
+        if existing:
             conn.execute("DELETE FROM pins WHERE session_id=:id", {"id": session_id})
             pinned = False
         else:
@@ -274,20 +271,15 @@ def session_pin(session_id: str) -> JSONResponse:
 
 @app.post("/session/{session_id}/resume")
 def session_resume(session_id: str) -> JSONResponse:
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT tool, cwd FROM sessions WHERE id=:id", {"id": session_id}
-        ).fetchone()
+    row = _get_session(session_id)
     if not row:
         return JSONResponse({"error": "not found"}, status_code=404)
-    info = launch_tmux(row["tool"], session_id, row["cwd"])
-    return JSONResponse(info)
+    return JSONResponse(launch_tmux(row["tool"], session_id, row["cwd"]))
 
 
 @app.post("/reindex")
 async def api_reindex(titles: bool = Query(False)) -> JSONResponse:
     stats = await asyncio.to_thread(reindex, False)
     if titles:
-        title_stats = await backfill_titles()
-        stats["titles"] = title_stats
+        stats["titles"] = await backfill_titles()
     return JSONResponse(stats)

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Callable, Iterable
 
+from .common import Tool, iter_jsonl, text_of, utcnow_iso, uuid_from_stem
 from .config import CLAUDE_PROJECTS_ROOT, CODEX_SESSIONS_ROOT
 from .db import connect, init_db, refresh_fts, transaction
 
@@ -13,7 +13,7 @@ from .db import connect, init_db, refresh_fts, transaction
 @dataclass
 class SessionRecord:
     id: str
-    tool: str
+    tool: Tool
     path: str
     cwd: str | None = None
     started_at: str | None = None
@@ -28,50 +28,25 @@ class SessionRecord:
     codex_summary: str | None = None
 
     def to_row(self) -> dict:
-        return {
-            **self.__dict__,
-            "indexed_at": datetime.now(timezone.utc).isoformat(),
-        }
+        return {**self.__dict__, "indexed_at": utcnow_iso()}
 
 
-def _iter_jsonl(path: Path) -> Iterator[dict]:
-    with path.open("r", encoding="utf-8", errors="replace") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-
-def _text_of(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for p in content:
-            if isinstance(p, dict):
-                if p.get("type") in ("text", "input_text", "output_text"):
-                    parts.append(p.get("text", ""))
-        return "\n".join(parts)
-    return ""
-
-
-def parse_claude_session(path: Path) -> SessionRecord | None:
+def _stat_record(path: Path, tool: Tool, id_: str = "") -> SessionRecord:
     stat = path.stat()
-    rec = SessionRecord(
-        id=path.stem,
-        tool="claude",
+    return SessionRecord(
+        id=id_,
+        tool=tool,
         path=str(path),
         mtime=stat.st_mtime,
         size=stat.st_size,
         last_activity=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
     )
 
+
+def parse_claude_session(path: Path) -> SessionRecord | None:
+    rec = _stat_record(path, "claude", id_=path.stem)
     found_first_user = False
-    for evt in _iter_jsonl(path):
+    for evt in iter_jsonl(path):
         et = evt.get("type")
         if not rec.started_at and evt.get("timestamp"):
             rec.started_at = evt["timestamp"]
@@ -82,7 +57,7 @@ def parse_claude_session(path: Path) -> SessionRecord | None:
             msg = evt.get("message", {})
             rec.message_count += 1
             if not found_first_user:
-                text = _text_of(msg.get("content", ""))
+                text = text_of(msg.get("content", ""))
                 if text:
                     rec.first_prompt = text
                     found_first_user = True
@@ -103,21 +78,13 @@ def parse_claude_session(path: Path) -> SessionRecord | None:
 
 
 def parse_codex_session(path: Path) -> SessionRecord | None:
-    stat = path.stat()
-    rec = SessionRecord(
-        id="",
-        tool="codex",
-        path=str(path),
-        mtime=stat.st_mtime,
-        size=stat.st_size,
-        last_activity=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-    )
+    rec = _stat_record(path, "codex")
 
-    last_user_text: str | None = None
     first_user_text: str | None = None
+    last_user_text: str | None = None
     latest_summary: str | None = None
 
-    for evt in _iter_jsonl(path):
+    for evt in iter_jsonl(path):
         et = evt.get("type")
         ts = evt.get("timestamp")
         payload = evt.get("payload", {}) or {}
@@ -131,10 +98,10 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
             if model and not rec.model:
                 rec.model = model
         elif et == "response_item":
-            item = payload
-            if item.get("type") == "message":
-                role = item.get("role")
-                text = _text_of(item.get("content", []))
+            it_type = payload.get("type")
+            if it_type == "message":
+                role = payload.get("role")
+                text = text_of(payload.get("content", []))
                 if role == "user" and text:
                     rec.message_count += 1
                     if first_user_text is None:
@@ -142,79 +109,63 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
                     last_user_text = text
                 elif role == "assistant" and text:
                     rec.message_count += 1
-            elif item.get("type") in ("function_call", "tool_use", "local_shell_call"):
+            elif it_type in ("function_call", "tool_use", "local_shell_call"):
                 rec.tool_call_count += 1
         elif et == "compacted":
-            hist = payload.get("replacement_history") or []
-            for h in hist:
+            for h in payload.get("replacement_history") or []:
                 if h.get("role") == "assistant":
-                    txt = _text_of(h.get("content", []))
+                    txt = text_of(h.get("content", []))
                     if txt:
                         latest_summary = txt
-                if h.get("role") == "user" and first_user_text is None:
-                    txt = _text_of(h.get("content", []))
+                elif h.get("role") == "user" and first_user_text is None:
+                    txt = text_of(h.get("content", []))
                     if txt:
                         first_user_text = txt
 
     if not rec.id:
-        # fall back to filename uuid
-        stem = path.stem  # rollout-<ts>-<uuid>
-        parts = stem.split("-")
-        if len(parts) >= 6:
-            rec.id = "-".join(parts[-5:])
-        else:
-            rec.id = stem
+        rec.id = uuid_from_stem(path.stem)
     rec.first_prompt = first_user_text
     rec.last_prompt = last_user_text or first_user_text
     rec.codex_summary = latest_summary
     return rec
 
 
-def iter_claude_paths() -> Iterable[Path]:
-    if not CLAUDE_PROJECTS_ROOT.exists():
-        return []
-    return CLAUDE_PROJECTS_ROOT.glob("*/*.jsonl")
+PARSERS: dict[Tool, Callable[[Path], SessionRecord | None]] = {
+    "claude": parse_claude_session,
+    "codex": parse_codex_session,
+}
 
 
-def iter_codex_paths() -> Iterable[Path]:
-    if not CODEX_SESSIONS_ROOT.exists():
-        return []
+def _iter_paths(tool: Tool) -> Iterable[Path]:
+    if tool == "claude":
+        return CLAUDE_PROJECTS_ROOT.glob("*/*.jsonl")
     return CODEX_SESSIONS_ROOT.glob("**/rollout-*.jsonl")
 
 
+_UPSERT_COLUMNS = (
+    "id", "tool", "path", "cwd", "started_at", "last_activity", "mtime", "size",
+    "message_count", "tool_call_count", "model", "first_prompt", "last_prompt",
+    "codex_summary", "indexed_at",
+)
+_UPSERT_SQL = (
+    f"INSERT INTO sessions ({', '.join(_UPSERT_COLUMNS)}) "
+    f"VALUES ({', '.join(':' + c for c in _UPSERT_COLUMNS)}) "
+    "ON CONFLICT(id) DO UPDATE SET "
+    + ", ".join(f"{c} = excluded.{c}" for c in _UPSERT_COLUMNS if c != "id")
+)
+
+
 def upsert(conn, rec: SessionRecord) -> None:
-    row = rec.to_row()
-    conn.execute(
-        """
-        INSERT INTO sessions (id, tool, path, cwd, started_at, last_activity, mtime, size,
-                              message_count, tool_call_count, model, first_prompt, last_prompt,
-                              codex_summary, indexed_at)
-        VALUES (:id, :tool, :path, :cwd, :started_at, :last_activity, :mtime, :size,
-                :message_count, :tool_call_count, :model, :first_prompt, :last_prompt,
-                :codex_summary, :indexed_at)
-        ON CONFLICT(id) DO UPDATE SET
-            path = excluded.path,
-            cwd = excluded.cwd,
-            started_at = excluded.started_at,
-            last_activity = excluded.last_activity,
-            mtime = excluded.mtime,
-            size = excluded.size,
-            message_count = excluded.message_count,
-            tool_call_count = excluded.tool_call_count,
-            model = excluded.model,
-            first_prompt = excluded.first_prompt,
-            last_prompt = excluded.last_prompt,
-            codex_summary = excluded.codex_summary,
-            indexed_at = excluded.indexed_at
-        """,
-        row,
-    )
+    conn.execute(_UPSERT_SQL, rec.to_row())
 
 
 def reindex(force: bool = False) -> dict:
     init_db()
-    stats = {"claude_new": 0, "claude_updated": 0, "claude_skipped": 0,
-             "codex_new": 0, "codex_updated": 0, "codex_skipped": 0, "errors": 0}
+    stats = {"errors": 0}
+    for tool in PARSERS:
+        stats[f"{tool}_new"] = 0
+        stats[f"{tool}_updated"] = 0
+        stats[f"{tool}_skipped"] = 0
 
     with connect() as conn:
         existing = {
@@ -222,44 +173,27 @@ def reindex(force: bool = False) -> dict:
             for row in conn.execute("SELECT id, path, mtime FROM sessions")
         }
 
+        changed = 0
         with transaction(conn):
-            for path in iter_claude_paths():
-                try:
-                    st = path.stat()
-                    prior = existing.get(str(path))
-                    if prior and not force and abs(prior[1] - st.st_mtime) < 1e-6:
-                        stats["claude_skipped"] += 1
-                        continue
-                    rec = parse_claude_session(path)
-                    if rec is None:
-                        continue
-                    upsert(conn, rec)
-                    if prior:
-                        stats["claude_updated"] += 1
-                    else:
-                        stats["claude_new"] += 1
-                except Exception:
-                    stats["errors"] += 1
+            for tool, parser in PARSERS.items():
+                for path in _iter_paths(tool):
+                    try:
+                        st = path.stat()
+                        prior = existing.get(str(path))
+                        if prior and not force and abs(prior[1] - st.st_mtime) < 1e-6:
+                            stats[f"{tool}_skipped"] += 1
+                            continue
+                        rec = parser(path)
+                        if rec is None:
+                            continue
+                        upsert(conn, rec)
+                        stats[f"{tool}_updated" if prior else f"{tool}_new"] += 1
+                        changed += 1
+                    except Exception:
+                        stats["errors"] += 1
 
-            for path in iter_codex_paths():
-                try:
-                    st = path.stat()
-                    prior = existing.get(str(path))
-                    if prior and not force and abs(prior[1] - st.st_mtime) < 1e-6:
-                        stats["codex_skipped"] += 1
-                        continue
-                    rec = parse_codex_session(path)
-                    if rec is None:
-                        continue
-                    upsert(conn, rec)
-                    if prior:
-                        stats["codex_updated"] += 1
-                    else:
-                        stats["codex_new"] += 1
-                except Exception:
-                    stats["errors"] += 1
-
-        refresh_fts(conn)
+        if changed:
+            refresh_fts(conn)
     return stats
 
 
