@@ -42,7 +42,7 @@
         {% set same_as_prev = (ns.last_role == t.role) %}
         {% set lc = (t.text or "").count("\n") + 1 %}
         {% set cc = (t.text or "")|length %}
-        {% set long = lc > 30 or cc > 1500 %}
+        {% set long = lc > long_lines or cc > long_chars %}
         {% set label = (lc ~ " lines") if lc > 10 else (cc ~ " chars") %}
         <article class="turn turn-{{ t.role }}{% if same_as_prev %} turn-continuation{% endif %}">
           {% if not same_as_prev and t.meta.ts %}

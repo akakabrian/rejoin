@@ -15,6 +15,14 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 
 from .common import Tool, iso_to_epoch, short_cwd, utcnow_iso
+from .config import (
+    ACTIVE_WINDOW_SEC,
+    LONG_TURN_CHARS,
+    LONG_TURN_LINES,
+    REFRESH_INTERVAL_SEC,
+    TRANSCRIPT_TAIL,
+    TURN_CACHE_SIZE,
+)
 from .db import connect, init_db
 from .indexer import reindex
 from .resume import launch_tmux, resume_command
@@ -24,11 +32,6 @@ from .transcript import load_turns
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 log = logging.getLogger("session_dash")
-
-REFRESH_INTERVAL_SEC = 60
-DEFAULT_TRANSCRIPT_TAIL = 40
-ACTIVE_WINDOW_SECONDS = 120
-TURN_CACHE_SIZE = 16
 
 _LAST_INDEXED_AT: float | None = None
 
@@ -40,7 +43,7 @@ def _mark_indexed() -> None:
 
 def _is_active(last_activity: str | None, now_epoch: float) -> bool:
     ts = iso_to_epoch(last_activity)
-    return bool(ts) and (now_epoch - ts) < ACTIVE_WINDOW_SECONDS
+    return bool(ts) and (now_epoch - ts) < ACTIVE_WINDOW_SEC
 
 
 def _highlight(text: str | None, q: str | None) -> Markup:
@@ -229,12 +232,12 @@ def session_detail(
 
     all_turns = _load_turns_cached(row["tool"], row["path"], row["mtime"] or 0.0)
     total = len(all_turns)
-    if full or total <= DEFAULT_TRANSCRIPT_TAIL:
+    if full or total <= TRANSCRIPT_TAIL:
         turns = all_turns
         hidden = 0
     else:
-        turns = all_turns[-DEFAULT_TRANSCRIPT_TAIL:]
-        hidden = total - DEFAULT_TRANSCRIPT_TAIL
+        turns = all_turns[-TRANSCRIPT_TAIL:]
+        hidden = total - TRANSCRIPT_TAIL
 
     blocks: list[dict] = []
     buf: list = []
@@ -253,7 +256,8 @@ def session_detail(
     return TEMPLATES.TemplateResponse(
         request, "_detail.html",
         {"s": row, "blocks": blocks, "resume_cmd": cmd,
-         "hidden": hidden, "total": total},
+         "hidden": hidden, "total": total,
+         "long_lines": LONG_TURN_LINES, "long_chars": LONG_TURN_CHARS},
     )
 
 

@@ -1,0 +1,38 @@
+# session-dash — example configuration
+# Copy to ~/.config/session-dash/config.toml and edit; values here are defaults.
+
+# -- Titling --------------------------------------------------------------
+# OpenRouter model slug used for the auto-title pass. Pick a cheap,
+# non-reasoning model — titles are a classification task.
+model = "qwen/qwen3-30b-a3b-instruct-2507"
+
+# Max concurrent titler calls on initial backfill.
+title_concurrency = 8
+
+# -- Refresh / UI ---------------------------------------------------------
+# How often the background task rescans for new/modified sessions.
+refresh_interval_sec = 60
+
+# Seconds since last_activity to still count a session as "active"
+# (shows a pulsing dot in the row and detail pane).
+active_window_sec = 120
+
+# -- Transcript rendering -------------------------------------------------
+# When opening a session, show the last N turns by default. "Load all"
+# button reveals the rest.
+transcript_tail = 40
+
+# In-memory cache of parsed transcripts (keyed by path+mtime).
+# Each entry holds one full session's turn list.
+turn_cache_size = 16
+
+# A user/assistant turn is collapsed with a fade + expand button when
+# either threshold is exceeded. Newline-poor but visually-wrapped
+# paragraphs trigger on chars; bulleted lists trigger on lines.
+long_turn_lines = 30
+long_turn_chars = 1500
+
+# -- Server ---------------------------------------------------------------
+# 0.0.0.0 makes it reachable from Tailnet peers; 127.0.0.1 is local-only.
+host = "0.0.0.0"
+port = 8767
