@@ -97,6 +97,30 @@ button {
 button:hover { background: var(--pampas); border-color: var(--cloudy); }
 button.secondary { background: transparent; }
 
+/* compact icon button (header refresh) */
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--cloudy-dim);
+  font-size: 14px;
+  line-height: 1;
+  width: 30px; height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color 0.12s, border-color 0.12s, transform 0.4s ease;
+}
+.icon-btn:hover { color: var(--crail); border-color: var(--crail); background: transparent; }
+.icon-btn.spinning { transform: rotate(360deg); color: var(--crail); border-color: var(--crail); }
+
+.refresh-age {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.2px;
+  min-width: 68px;
+  color: var(--cloudy);
+}
+
 /* ---------- two-pane layout ---------- */
 main {
   display: grid;

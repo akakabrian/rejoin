@@ -32,8 +32,8 @@
         <input type="checkbox" name="group" value="true"> grouped
       </label>
     </form>
-    <button hx-post="/reindex?titles=true" hx-target="#reindex-status" hx-swap="innerHTML">re-index + titles</button>
-    <span id="reindex-status"></span>
+    <button id="refresh-btn" class="icon-btn" title="re-index now" aria-label="re-index now">↻</button>
+    <span id="refresh-age" class="muted refresh-age"></span>
   </div>
 </header>
 <main>

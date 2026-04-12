@@ -30,6 +30,13 @@ DEFAULT_TRANSCRIPT_TAIL = 40
 ACTIVE_WINDOW_SECONDS = 120
 TURN_CACHE_SIZE = 16
 
+_LAST_INDEXED_AT: float | None = None
+
+
+def _mark_indexed() -> None:
+    global _LAST_INDEXED_AT
+    _LAST_INDEXED_AT = datetime.now(timezone.utc).timestamp()
+
 
 def _is_active(last_activity: str | None, now_epoch: float) -> bool:
     ts = iso_to_epoch(last_activity)
@@ -69,6 +76,7 @@ async def _refresh_loop() -> None:
     while True:
         try:
             stats = await asyncio.to_thread(reindex, False)
+            _mark_indexed()
             changed = (stats["claude_new"] + stats["claude_updated"]
                        + stats["codex_new"] + stats["codex_updated"])
             if changed:
@@ -278,8 +286,17 @@ def session_resume(session_id: str) -> JSONResponse:
 
 
 @app.post("/reindex")
-async def api_reindex(titles: bool = Query(False)) -> JSONResponse:
+async def api_reindex(titles: bool = Query(True)) -> JSONResponse:
     stats = await asyncio.to_thread(reindex, False)
+    _mark_indexed()
     if titles:
         stats["titles"] = await backfill_titles()
     return JSONResponse(stats)
+
+
+@app.get("/status")
+def api_status() -> JSONResponse:
+    age = None
+    if _LAST_INDEXED_AT is not None:
+        age = datetime.now(timezone.utc).timestamp() - _LAST_INDEXED_AT
+    return JSONResponse({"last_indexed_age_s": age})

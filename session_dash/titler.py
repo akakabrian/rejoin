@@ -56,8 +56,8 @@ async def _generate_title(client: httpx.AsyncClient, api_key: str, content: str)
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": content},
             ],
-            "max_tokens": 500,
-            "reasoning": {"effort": "minimal"},
+            "max_tokens": 60,
+            "temperature": 0.3,
         },
         timeout=60.0,
     )

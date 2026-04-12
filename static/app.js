@@ -1,5 +1,41 @@
 let selectedSessionId = null;
 
+function fmtAge(seconds) {
+  if (seconds == null) return "never indexed";
+  const s = Math.round(seconds);
+  if (s < 60)  return `indexed ${s}s ago`;
+  if (s < 3600) return `indexed ${Math.round(s / 60)}m ago`;
+  return `indexed ${Math.round(s / 3600)}h ago`;
+}
+
+async function refreshAge() {
+  try {
+    const r = await fetch("/status");
+    const data = await r.json();
+    const el = document.getElementById("refresh-age");
+    if (el) el.textContent = fmtAge(data.last_indexed_age_s);
+  } catch { /* ignore */ }
+}
+
+async function triggerReindex() {
+  const btn = document.getElementById("refresh-btn");
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add("spinning");
+  try {
+    await fetch("/reindex?titles=true", { method: "POST" });
+    await refreshAge();
+    const form = document.getElementById("filters");
+    if (form) htmx.trigger(form, "submit");
+  } finally {
+    setTimeout(() => btn.classList.remove("spinning"), 400);
+    btn.disabled = false;
+  }
+}
+
+refreshAge();
+setInterval(refreshAge, 10000);
+
 function allRows() {
   return Array.from(document.querySelectorAll(".session-row"));
 }
@@ -58,6 +94,11 @@ document.body.addEventListener("htmx:afterSwap", (e) => {
 });
 
 document.body.addEventListener("click", async (e) => {
+  if (e.target.id === "refresh-btn") {
+    triggerReindex();
+    return;
+  }
+
   // expand/collapse long turn body
   const expandBtn = e.target.closest(".expand-btn");
   if (expandBtn) {

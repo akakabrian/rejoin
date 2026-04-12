@@ -15,7 +15,7 @@ DB_PATH = DATA_DIR / "index.db"
 CRM_ENV_PATH = HOME / "AI" / "projects" / "Paa Prefab CRM" / ".env"
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = "openai/gpt-5-mini"
+OPENROUTER_MODEL = "qwen/qwen3-30b-a3b-instruct-2507"
 
 TITLE_MAX_WORDS = 8
 TITLE_CONCURRENCY = 8
