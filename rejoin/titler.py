@@ -15,30 +15,68 @@ from .config import (
 from .db import connect, refresh_fts
 
 SYSTEM_PROMPT = (
-    "You write concise titles for coding assistant sessions. "
-    "Given excerpts from a session, respond with only a 5-8 word title in Title Case. "
-    "No quotes, no punctuation at the end, no leading verbs like 'Discussing'. "
-    "Focus on the task or topic. Examples: "
-    "'QuickBooks Health Check Real Validation', 'Tailscale SSH Setup For Taro'."
+    "You write punchy, specific headlines for past coding-assistant sessions. "
+    "The user will later scan dozens of these at a glance, so the title must "
+    "make THIS session distinguishable from the rest.\n\n"
+    "The input is the user's FIRST prompt to the assistant (their actual goal "
+    "for the session), optionally followed by a compaction summary or their "
+    "latest prompt. The first prompt is the primary signal — write the title "
+    "around THAT.\n\n"
+    "Rules:\n"
+    "- 3 to 6 words, Title Case.\n"
+    "- Lead with a concrete noun phrase. Never start with a generic verb like "
+    "'Handling', 'Setting Up', 'Discussing', 'Creating', 'Implementing', "
+    "'Exploring', 'Understanding', 'Working On'. Drop them.\n"
+    "- Drop articles (a, an, the) and filler prepositions (for, of, with, in) "
+    "unless the title genuinely reads wrong without them.\n"
+    "- Use concrete terms from the user's actual words — file names, tool "
+    "names, error types, feature names — not abstract categories.\n"
+    "- If the user pasted an error, name the error. If they asked about a "
+    "specific file or feature, name it.\n"
+    "- Output the title only. No quotes, no trailing period, no prefix.\n\n"
+    "Examples of GOOD titles:\n"
+    "  User asks to fix a broken QuickBooks token health check\n"
+    "    → QuickBooks Health Check Validation\n"
+    "  User asks how to SSH into their machine over Tailscale\n"
+    "    → Tailscale SSH Keyless Access\n"
+    "  User pastes a retry-warning log that leaks a query param\n"
+    "    → HTTP Client Retry Warning Redaction\n"
+    "  User describes building a dashboard to rejoin sessions\n"
+    "    → Session Dashboard With Tmux Rejoin\n"
+    "  User reports the '--resume' flag silently fails\n"
+    "    → Claude Resume Flag Silent Failure\n\n"
+    "Examples of BAD titles to AVOID:\n"
+    "  'Handling The Session Resume Flow'   (generic verb 'Handling')\n"
+    "  'Working On A Dashboard For Sessions' (generic verb + filler)\n"
+    "  'Discussion About Authentication'    (vague; no specifics)\n"
+    "  'Session About QuickBooks'           (vague; what about it?)"
 )
 
 
 def _content_for(row) -> str:
+    """Build the LLM input. First prompt is the headline signal; the other
+    fields are context in case the first prompt alone is ambiguous."""
     fp = (row["first_prompt"] or "").strip()
     lp = (row["last_prompt"] or "").strip()
     summary = (row["codex_summary"] or "").strip()
     parts: list[str] = []
     if fp:
-        parts.append(f"FIRST USER PROMPT:\n{fp[:2000]}")
+        parts.append(f"USER'S FIRST PROMPT (primary signal):\n{fp[:2000]}")
     if summary:
-        parts.append(f"SESSION SUMMARY:\n{summary[:1500]}")
+        parts.append(f"SESSION SUMMARY (context only):\n{summary[:1500]}")
     if lp and lp != fp:
-        parts.append(f"LAST USER PROMPT:\n{lp[:800]}")
+        parts.append(f"USER'S LATEST PROMPT (context only):\n{lp[:800]}")
     return "\n\n".join(parts).strip()
 
 
+# Bump when the system prompt changes; invalidates cached titles so they
+# regenerate with the new instructions.
+PROMPT_VERSION = 2
+
+
 def _content_hash(content: str) -> str:
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+    keyed = f"v{PROMPT_VERSION}:{content}"
+    return hashlib.sha256(keyed.encode("utf-8")).hexdigest()[:16]
 
 
 async def _generate_title(client: httpx.AsyncClient, api_key: str, content: str) -> tuple[str, int, int]:

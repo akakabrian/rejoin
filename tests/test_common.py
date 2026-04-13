@@ -1,4 +1,5 @@
 from rejoin.common import (
+    ago,
     iso_to_epoch,
     iter_jsonl,
     short_cwd,
@@ -49,3 +50,21 @@ def test_iter_jsonl_skips_blank_and_malformed(tmp_path):
 def test_utcnow_iso_is_iso_with_tz():
     s = utcnow_iso()
     assert "T" in s and (s.endswith("+00:00") or s.endswith("Z"))
+
+
+def test_ago_rounds_to_largest_unit():
+    from datetime import UTC, datetime
+    now = 1_000_000_000.0
+    def iso(offset):
+        return datetime.fromtimestamp(now - offset, UTC).isoformat()
+    assert ago(iso(30), now) == "-"       # <1 min
+    assert ago(iso(59), now) == "-"
+    assert ago(iso(60), now) == "1m"      # 1 min
+    assert ago(iso(119), now) == "1m"     # rounds down
+    assert ago(iso(3599), now) == "59m"
+    assert ago(iso(3600), now) == "1h"
+    assert ago(iso(86399), now) == "23h"
+    assert ago(iso(86400), now) == "1d"
+    assert ago(iso(86400 * 364), now) == "364d"
+    assert ago(iso(86400 * 365), now) == "1y"
+    assert ago(None, now) == ""

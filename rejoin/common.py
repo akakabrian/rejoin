@@ -60,3 +60,25 @@ def short_cwd(cwd: str | None) -> str:
 def uuid_from_stem(stem: str) -> str:
     m = _UUID_RE.search(stem)
     return m.group(0) if m else stem
+
+
+def ago(last_activity: str | None, now_epoch: float | None = None) -> str:
+    """Compact relative time: `-` (<1 min), `Nm`, `Nh`, `Nd`, `Ny`.
+
+    Rounds down to the largest unit that fits.
+    """
+    ts = iso_to_epoch(last_activity)
+    if ts == 0.0:
+        return ""
+    if now_epoch is None:
+        now_epoch = datetime.now(UTC).timestamp()
+    delta = max(0.0, now_epoch - ts)
+    if delta < 60:
+        return "-"
+    if delta < 3600:
+        return f"{int(delta // 60)}m"
+    if delta < 86400:
+        return f"{int(delta // 3600)}h"
+    if delta < 86400 * 365:
+        return f"{int(delta // 86400)}d"
+    return f"{int(delta // (86400 * 365))}y"

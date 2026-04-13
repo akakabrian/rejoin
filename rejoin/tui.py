@@ -22,7 +22,7 @@ from textual.containers import Horizontal
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
-from .common import Tool, iso_to_epoch, short_cwd
+from .common import Tool, ago, iso_to_epoch, short_cwd
 from .config import ACTIVE_WINDOW_SEC, TRANSCRIPT_TAIL, TURN_CACHE_SIZE
 from .db import connect, init_db
 from .indexer import reindex
@@ -211,7 +211,7 @@ class SessionDashTUI(App):
         yield Input(placeholder="/ to search — esc to clear", id="search")
         with Horizontal(id="panes"):
             table = DataTable(id="sessions", cursor_type="row", zebra_stripes=False)
-            table.add_columns(" ", "tool", "title", "cwd", "when", "msgs")
+            table.add_columns(" ", "tool", "ago", "SESSION", "cwd", "msgs")
             yield table
             yield RichLog(id="transcript", wrap=True, markup=False, highlight=False,
                           auto_scroll=False)
@@ -306,17 +306,20 @@ class SessionDashTUI(App):
         rows = _fetch_sessions(self.query or None)
         table = self.query_one(DataTable)
         table.clear()
+        import time
+        now = time.time()
         for r in rows:
             pin = Text("★", style="#C15F3C") if r["pinned"] else Text(" ")
             tool = Text(r["tool"], style=_TOOL_COLORS.get(r["tool"], "#EDE6D9"))
+            ago_str = ago(r.get("last_activity"), now)
+            ago_cell = Text(ago_str.rjust(3),
+                            style="#C15F3C" if r["active"] else "#8E897F")
             active = " •" if r["active"] else ""
             title = Text((r["ai_title"] or (r["first_prompt"] or "")[:80]) + active,
                          style="bold #EDE6D9" if r["active"] else "#EDE6D9")
             cwd = Text(short_cwd(r["cwd"]), style="#8E897F")
-            when = Text((r["last_activity"] or "")[:16].replace("T", " "),
-                        style="#8E897F")
             msgs = Text(str(r["message_count"] or 0), style="#8E897F")
-            table.add_row(pin, tool, title, cwd, when, msgs, key=r["id"])
+            table.add_row(pin, tool, ago_cell, title, cwd, msgs, key=r["id"])
         self.sessions = rows
         self.status = f"{len(rows)} session{'s' if len(rows)!=1 else ''}" + (
             f" · search: {self.query}" if self.query else "")
