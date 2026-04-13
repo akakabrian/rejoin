@@ -12,3 +12,8 @@ dist/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+
+# local notes — never commit
+rejoin-launch.md
+NOTES.md
+TODO.md
