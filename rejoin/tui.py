@@ -23,6 +23,13 @@ from textual.reactive import reactive
 from textual.theme import Theme
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
+from .common import Tool, ago, iso_to_epoch, short_cwd
+from .config import ACTIVE_WINDOW_SEC, TRANSCRIPT_TAIL, TURN_CACHE_SIZE
+from .db import connect, init_db
+from .indexer import reindex
+from .resume import resume_command, tmux_session_name
+from .transcript import load_turns
+
 REJOIN_THEME = Theme(
     name="rejoin",
     primary="#C15F3C",      # Crail copper — cursor, focus, accent
@@ -43,13 +50,6 @@ REJOIN_THEME = Theme(
         "cloudy-dim": "#8E897F",
     },
 )
-
-from .common import Tool, ago, iso_to_epoch, short_cwd
-from .config import ACTIVE_WINDOW_SEC, TRANSCRIPT_TAIL, TURN_CACHE_SIZE
-from .db import connect, init_db
-from .indexer import reindex
-from .resume import resume_command, tmux_session_name
-from .transcript import load_turns
 
 _TOOL_COLORS: dict[str, str] = {
     "claude":   "#C15F3C",
