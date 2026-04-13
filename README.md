@@ -4,9 +4,33 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-copper.svg)](CHANGELOG.md)
 
-A local dashboard for browsing and rejoining AI coding-agent sessions (Claude Code, Codex, OpenCode, Pi).
+> **You closed your terminal. Which Claude Code session had that auth bug?**
+> rejoin is a local dashboard + TUI for browsing, searching, and tmux-resuming every coding-agent session on your machine.
 
-Two front-ends that share one SQLite cache:
+## Why
+
+If you run Claude Code, Codex, or OpenCode daily, you pile up dozens of sessions
+in `~/.claude/projects/` and `~/.codex/sessions/` — opaque UUIDs, no way to find
+"the one where I fixed the webhook bug last Tuesday."
+
+rejoin indexes every session file locally, auto-titles them into scannable
+headlines ("HTTP Client Query String Redaction", not `e0a57d18-…`), and gives
+you a two-pane dashboard — web or terminal — to search, pin, and pick back up
+in tmux.
+
+## Try it in 30 seconds
+
+```bash
+pipx install git+https://github.com/akakabrian/rejoin.git
+rejoin         # web UI at http://127.0.0.1:8767
+rejoin-tui     # terminal UI (tmux-aware)
+```
+
+Full install with API-key setup → [Install](#install-agent-friendly-copy-paste-this-exact-sequence). &nbsp;&nbsp; Walkthrough → [docs/TUTORIAL.md](docs/TUTORIAL.md).
+
+---
+
+## Two front-ends, one SQLite cache
 
 ### 🖥️ Web UI &nbsp;— FastAPI + HTMX
 
@@ -22,7 +46,17 @@ The same dashboard as a first-class TUI. Inside tmux, pressing `Enter` on a row 
 
 ---
 
-Under the hood: indexes session files from four agents into SQLite, auto-titles each session via a cheap OpenRouter model, and lets you rejoin any session in `tmux`.
+## What rejoin is — and isn't
+
+|  |  |
+| --- | --- |
+| ✅ **Reads** your local session files | ❌ **Never writes** to them |
+| ✅ Indexes, titles, searches, groups | ❌ No cloud sync |
+| ✅ One-click tmux rejoin | ❌ No auth / multi-user |
+| ✅ Web + terminal UIs | ❌ Not a CLI replacement |
+| ✅ MIT, pure Python, small deps | ❌ Not a framework |
+
+## Features
 
 - **Four tools**: Claude Code and Codex (our own parsers — richer detail); OpenCode and Pi via [`agent-sessions`](https://github.com/larsderidder/agent-sessions).
 - **Auto titles**: `qwen/qwen3-30b-a3b-instruct-2507` (~$7e-6 per title). Falls back to the first prompt if no key.
@@ -248,8 +282,35 @@ rejoin/
 
 ## Credits
 
-OpenCode + Pi providers and running-process detection come from [`agent-sessions`](https://github.com/larsderidder/agent-sessions) by Lars de Ridder (MIT).
+- **Visual identity** inspired by [Claude.ai](https://claude.ai) — the warm Pampas/Crail beige palette is an homage to Anthropic's Styrene + Tiempos design system, implemented here with free Fraunces / DM Sans / Source Serif 4 / IBM Plex Mono.
+- **OpenCode + Pi providers and running-process detection** come from [`agent-sessions`](https://github.com/larsderidder/agent-sessions) by Lars de Ridder (MIT).
+- **Textual** by [Textualize](https://textualize.io) powers the TUI.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+---
+
+<details>
+<summary>Show HN / Reddit launch copy</summary>
+
+**Title**: *Show HN: rejoin — a local dashboard to browse and tmux-resume your Claude Code / Codex sessions*
+
+**Body**:
+
+> I run a lot of Claude Code and Codex sessions, and kept losing track of which
+> UUID-named `.jsonl` was the thread I wanted to pick up. So I built **rejoin**:
+> a local web dashboard + Textual TUI that indexes every session file on your
+> machine, auto-titles them with a cheap OpenRouter model, and lets you search,
+> pin, and rejoin in tmux with one keystroke.
+>
+> - Reads `~/.claude/projects`, `~/.codex/sessions`, OpenCode's SQLite, and Pi.
+> - FTS5 search over prompts, titles, and Codex compaction summaries.
+> - Pampas-beige web UI borrowed from Claude.ai's aesthetic; matching TUI.
+> - `pipx install git+https://github.com/akakabrian/rejoin.git`
+>
+> Python 3.11+, MIT. Loops locally — no auth, no cloud, never writes to your
+> session files. https://github.com/akakabrian/rejoin
+
+</details>

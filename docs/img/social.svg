@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F4F3EE"/>
+      <stop offset="100%" stop-color="#ECE9E0"/>
+    </linearGradient>
+    <!-- paper grid -->
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <rect width="32" height="32" fill="none"/>
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="rgba(31,28,23,0.04)" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+
+  <!-- star mark (Claude-esque 8-point starburst) -->
+  <g transform="translate(130, 200)">
+    <polygon points="60,0 70,50 120,60 70,70 60,120 50,70 0,60 50,50"
+             fill="#C15F3C" opacity="0.92"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="300" y="290" font-family="Georgia, serif" font-size="180"
+        font-weight="500" fill="#1F1C17" letter-spacing="-4">rejoin</text>
+
+  <!-- tagline -->
+  <text x="302" y="360" font-family="ui-sans-serif, system-ui, sans-serif"
+        font-size="36" font-weight="400" fill="#3A342C" letter-spacing="-0.5">
+    Browse, search, and tmux-resume
+  </text>
+  <text x="302" y="408" font-family="ui-sans-serif, system-ui, sans-serif"
+        font-size="36" font-weight="400" fill="#3A342C" letter-spacing="-0.5">
+    your AI coding sessions — locally.
+  </text>
+
+  <!-- footer lockup -->
+  <g transform="translate(130, 540)">
+    <text font-family="ui-monospace, monospace" font-size="22"
+          fill="#8E897F" letter-spacing="2">
+      CLAUDE CODE   ·   CODEX   ·   OPENCODE   ·   PI
+    </text>
+  </g>
+
+  <!-- corner accent: copper rule -->
+  <rect x="0" y="0" width="8" height="640" fill="#C15F3C"/>
+</svg>
