@@ -5,6 +5,21 @@ All notable changes to **rejoin** are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] — 2026-04-12
+
+### Changed
+- **Better titler prompt.** Earlier versions occasionally produced single-
+  word titles like "Hey" when the user's first prompt was a greeting or a
+  ping. The prompt now has an explicit FALLBACK RULE: if the input is too
+  thin to identify a topic (greetings, capability questions, yes/no,
+  `<local-command-caveat>` noise, etc.), the model must output exactly
+  `Brief Exchange`.
+- Titler input now also includes the session's cwd and message/tool-call
+  counts, giving the model more signal for ambiguous first prompts.
+- Regeneration skips sessions whose title hash ends in `-native` — so
+  provider-native titles (e.g. Hermes's) aren't overwritten by the LLM.
+- PROMPT_VERSION bumped to 3; existing titles regenerate once.
+
 ## [0.3.0] — 2026-04-12
 
 ### Added
