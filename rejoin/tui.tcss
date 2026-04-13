@@ -1,39 +1,42 @@
-/* Pampas/Crail palette, terminal edition */
+/* All colors drawn from the active Textual theme.
+   Defaults come from REJOIN_THEME (see tui.py), so the Pampas/Crail
+   palette is the out-of-box look; switching theme via the command
+   palette swaps to whatever the user picks. */
 
 Screen {
-    background: #181512;
-    color: #EDE6D9;
+    background: $background;
+    color: $foreground;
 }
 
 Header {
-    background: #1F1C17;
-    color: #EDE6D9;
+    background: $surface;
+    color: $foreground;
 }
 
 Footer {
-    background: #1F1C17;
-    color: #8E897F;
+    background: $surface;
+    color: $foreground-muted;
 }
 
 Footer > .footer--highlight {
-    color: #F4F3EE;
-    background: #C15F3C;
+    color: $background;
+    background: $primary;
 }
 
 Footer > .footer--key {
-    color: #C15F3C;
-    background: #1F1C17;
+    color: $primary;
+    background: $surface;
 }
 
 #search {
-    background: #1F1C17;
-    color: #EDE6D9;
-    border: tall #2B251E;
+    background: $surface;
+    color: $foreground;
+    border: tall $panel;
     height: 3;
     margin: 0 1;
 }
 #search:focus {
-    border: tall #C15F3C;
+    border: tall $primary;
 }
 
 #panes {
@@ -43,39 +46,39 @@ Footer > .footer--key {
 #sessions {
     width: 55%;
     background: transparent;
-    color: #EDE6D9;
-    border-right: vkey #2B251E;
+    color: $foreground;
+    border-right: vkey $panel;
 }
 
 DataTable > .datatable--header {
-    background: #1F1C17;
-    color: #8E897F;
+    background: $surface;
+    color: $foreground-muted;
     text-style: bold;
 }
 
 DataTable > .datatable--cursor {
-    background: #C15F3C 30%;
-    color: #F4F3EE;
+    background: $primary 30%;
+    color: $foreground;
     text-style: bold;
 }
 
 DataTable > .datatable--hover {
-    background: #2B251E;
+    background: $panel;
 }
 
 #transcript {
     width: 45%;
-    background: #181512;
-    color: #EDE6D9;
+    background: $background;
+    color: $foreground;
     padding: 1 2;
     border: none;
-    scrollbar-color: #2B251E #181512;
+    scrollbar-color: $panel $background;
 }
 
 #status {
     dock: bottom;
     height: 1;
     padding: 0 1;
-    background: #1F1C17;
-    color: #C15F3C;
+    background: $surface;
+    color: $primary;
 }

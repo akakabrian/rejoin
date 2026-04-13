@@ -20,7 +20,29 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.reactive import reactive
+from textual.theme import Theme
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
+
+REJOIN_THEME = Theme(
+    name="rejoin",
+    primary="#C15F3C",      # Crail copper — cursor, focus, accent
+    secondary="#D4A27F",    # Anthropic tan
+    accent="#C15F3C",
+    foreground="#EDE6D9",
+    background="#181512",   # warm paper-dark
+    surface="#1F1C17",      # header / footer / search band
+    panel="#2B251E",        # borders, dividers
+    success="#4ade80",
+    warning="#D4A27F",
+    error="#C15F3C",
+    dark=True,
+    variables={
+        "crail": "#C15F3C",
+        "pampas": "#F4F3EE",
+        "cloudy": "#B1ADA1",
+        "cloudy-dim": "#8E897F",
+    },
+)
 
 from .common import Tool, ago, iso_to_epoch, short_cwd
 from .config import ACTIVE_WINDOW_SEC, TRANSCRIPT_TAIL, TURN_CACHE_SIZE
@@ -225,6 +247,8 @@ class SessionDashTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.register_theme(REJOIN_THEME)
+        self.theme = "rejoin"
         init_db()
         search = self.query_one("#search", Input)
         search.display = False
