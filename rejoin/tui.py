@@ -23,6 +23,13 @@ from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
 from .common import Tool, iso_to_epoch, short_cwd
+
+_TOOL_COLORS: dict[str, str] = {
+    "claude":   "#C15F3C",
+    "codex":    "#0E7D5F",
+    "opencode": "#6940B0",
+    "pi":       "#2E5D8E",
+}
 from .config import ACTIVE_WINDOW_SEC, TRANSCRIPT_TAIL, TURN_CACHE_SIZE
 from .db import connect, init_db
 from .indexer import reindex
@@ -52,11 +59,19 @@ def _fetch_sessions(q: str | None = None, limit: int = 500) -> list[dict]:
         LIMIT :limit
     """
     now = datetime.now(timezone.utc).timestamp()
+    try:
+        from .external import running_session_ids
+        running = running_session_ids()
+    except Exception:
+        running = set()
     with connect() as conn:
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
     for r in rows:
         ts = iso_to_epoch(r.get("last_activity"))
-        r["active"] = bool(ts) and (now - ts) < ACTIVE_WINDOW_SEC
+        r["active"] = (
+            r.get("id") in running
+            or (bool(ts) and (now - ts) < ACTIVE_WINDOW_SEC)
+        )
     return rows
 
 
@@ -294,8 +309,7 @@ class SessionDashTUI(App):
         table.clear()
         for r in rows:
             pin = Text("★", style="#C15F3C") if r["pinned"] else Text(" ")
-            tool = Text(r["tool"],
-                        style="#C15F3C" if r["tool"] == "claude" else "#0E7D5F")
+            tool = Text(r["tool"], style=_TOOL_COLORS.get(r["tool"], "#EDE6D9"))
             active = " •" if r["active"] else ""
             title = Text((r["ai_title"] or (r["first_prompt"] or "")[:80]) + active,
                          style="bold #EDE6D9" if r["active"] else "#EDE6D9")
@@ -332,7 +346,7 @@ class SessionDashTUI(App):
         header = Text()
         header.append(f"{title}\n", style="bold #EDE6D9")
         header.append(f"{row['tool']}",
-                      style="#C15F3C" if row["tool"] == "claude" else "#0E7D5F")
+                      style=_TOOL_COLORS.get(row["tool"], "#EDE6D9"))
         header.append(" · ", style="#8E897F")
         header.append(f"{row.get('model') or '?'}", style="#8E897F")
         header.append(" · ", style="#8E897F")

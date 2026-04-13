@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Literal
 
-Tool = Literal["claude", "codex"]
+Tool = Literal["claude", "codex", "opencode", "pi"]
 
 TEXT_PART_TYPES = frozenset({"text", "input_text", "output_text"})
 

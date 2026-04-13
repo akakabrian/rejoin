@@ -89,6 +89,15 @@ _ITERATORS: dict[Tool, Callable[[Path], Iterator[Turn]]] = {
 
 
 def load_turns(tool: Tool, path: Path) -> list[Turn]:
-    if tool not in _ITERATORS:
-        raise ValueError(f"unknown tool: {tool}")
-    return list(_ITERATORS[tool](path))
+    if tool in _ITERATORS:
+        return list(_ITERATORS[tool](path))
+    # OpenCode/Pi come from agent-sessions and use session IDs, not file
+    # paths. `path` is "agent-sessions://<tool>/<id>" — recover the id.
+    if tool in ("opencode", "pi"):
+        session_id = str(path).rsplit("/", 1)[-1]
+        try:
+            from .external import iter_external_turns
+        except Exception:
+            return []
+        return list(iter_external_turns(tool, session_id))
+    raise ValueError(f"unknown tool: {tool}")

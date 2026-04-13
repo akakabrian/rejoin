@@ -1,19 +1,19 @@
 # rejoin
 
-A local dashboard for browsing and rejoining Claude Code + Codex sessions on your machine.
+A local dashboard for browsing and rejoining AI coding-agent sessions on your machine.
 
 ![dashboard screenshot](docs/img/dashboard.png)
 
-It walks `~/.claude/projects/**/*.jsonl` and `~/.codex/sessions/**/*.jsonl`, indexes the lot into SQLite, auto-titles each session via a cheap OpenRouter model, and lets you rejoin any session in a detached `tmux` — all from a warm beige UI that borrows heavily from Claude.ai's aesthetic.
+It indexes sessions from **Claude Code, Codex, OpenCode, and Pi** into SQLite, auto-titles each session via a cheap OpenRouter model, and lets you rejoin any session in a detached `tmux` — all from a warm beige UI that borrows heavily from Claude.ai's aesthetic.
 
-- **Dual-tool**: indexes both Claude Code and Codex session files.
+- **Four tools**: Claude Code and Codex via our own parsers (for Codex-compaction summary, model, tool-call count); OpenCode and Pi via [`agent-sessions`](https://github.com/larsderidder/agent-sessions).
 - **Auto titles**: every session gets a human-readable title from `qwen/qwen3-30b-a3b-instruct-2507` (~$7e-6 per title). Falls back to the first prompt if the API is down.
 - **Rejoin in tmux**: one click spawns a detached `tmux` session in the original `cwd`; the UI gives you the attach command.
 - **Incremental**: re-scans every 60s, skipping anything whose mtime is unchanged. Titles only regenerate when content actually changed.
 - **Search**: FTS5 over titles, first-and-last prompts, and Codex compaction summaries, with hit highlighting.
 - **Group by cwd**: nest the list under sticky project headers.
 - **Pin favorites**: ★ any session to float it to the top.
-- **Active indicator**: sessions touched in the last 2 min pulse in the list and detail pane.
+- **Active indicator**: a session pulses when either (a) its file was touched in the last 2 min, or (b) a matching `--resume <id>` / `codex resume <id>` / `pi <id>` process is detected via `ps`.
 - **Keyboard-first**: `j`/`k` / `↑`/`↓` navigate, `Enter` rejoins, `p` pins, `/` focuses search.
 
 ## Install
@@ -128,6 +128,10 @@ The `indexer.py` → `titler.py` → `app.py` pipeline is decoupled: indexer kno
 - **titles aren't updating for active sessions** — the content hash guards against redundant API calls; a session needs to actually change prompt/summary text to re-title.
 - **tmux session already running** — rejoin reuses `sess-<tool>-<uuid8>` if it's still alive. Kill it with `tmux kill-session -t sess-…` if you want a fresh start.
 - **port already in use** — `ss -tln | grep :<port>` to see who has it; change `port` in config.
+
+## Credits
+
+The OpenCode and Pi providers, and the running-process detection, come from [`agent-sessions`](https://github.com/larsderidder/agent-sessions) by Lars de Ridder. MIT-licensed.
 
 ## License
 

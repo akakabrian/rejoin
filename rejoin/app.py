@@ -41,9 +41,21 @@ def _mark_indexed() -> None:
     _LAST_INDEXED_AT = datetime.now(timezone.utc).timestamp()
 
 
-def _is_active(last_activity: str | None, now_epoch: float) -> bool:
+def _is_active(last_activity: str | None, now_epoch: float,
+               running: set[str] | None = None,
+               session_id: str | None = None) -> bool:
+    if running and session_id in running:
+        return True
     ts = iso_to_epoch(last_activity)
     return bool(ts) and (now_epoch - ts) < ACTIVE_WINDOW_SEC
+
+
+def _running_ids() -> set[str]:
+    try:
+        from .external import running_session_ids
+        return running_session_ids()
+    except Exception:
+        return set()
 
 
 def _highlight(text: str | None, q: str | None) -> Markup:
@@ -140,12 +152,14 @@ def _fetch_sessions(
     """
 
     now_epoch = datetime.now(timezone.utc).timestamp()
+    running = _running_ids()
     with connect() as conn:
         rows = conn.execute(sql, params).fetchall()
     out: list[dict] = []
     for r in rows:
         d = dict(r)
-        d["active"] = _is_active(d.get("last_activity"), now_epoch)
+        d["active"] = _is_active(d.get("last_activity"), now_epoch,
+                                 running, d.get("id"))
         out.append(d)
     return out
 
@@ -171,7 +185,8 @@ def _get_session(session_id: str) -> dict | None:
         return None
     d = dict(row)
     d["active"] = _is_active(d.get("last_activity"),
-                             datetime.now(timezone.utc).timestamp())
+                             datetime.now(timezone.utc).timestamp(),
+                             _running_ids(), d.get("id"))
     return d
 
 

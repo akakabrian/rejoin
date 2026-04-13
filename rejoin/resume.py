@@ -11,6 +11,13 @@ def resume_command(tool: str, session_id: str, cwd: str | None) -> str:
         inner = f"claude --resume {shlex.quote(session_id)}"
     elif tool == "codex":
         inner = f"codex resume {shlex.quote(session_id)}"
+    elif tool == "pi":
+        inner = f"pi {shlex.quote(session_id)}"
+    elif tool == "opencode":
+        # OpenCode doesn't expose session IDs on the CLI (no --resume flag).
+        # Best we can do is drop into the project dir and relaunch; the user
+        # picks the session from OpenCode's own UI.
+        inner = "opencode"
     else:
         raise ValueError(f"unknown tool: {tool}")
     return f"cd {shlex.quote(cwd)} && {inner}"

@@ -139,7 +139,9 @@ PARSERS: dict[Tool, Callable[[Path], SessionRecord | None]] = {
 def _iter_paths(tool: Tool) -> Iterable[Path]:
     if tool == "claude":
         return CLAUDE_PROJECTS_ROOT.glob("*/*.jsonl")
-    return CODEX_SESSIONS_ROOT.glob("**/rollout-*.jsonl")
+    if tool == "codex":
+        return CODEX_SESSIONS_ROOT.glob("**/rollout-*.jsonl")
+    return []
 
 
 _UPSERT_COLUMNS = (
@@ -191,6 +193,29 @@ def reindex(force: bool = False) -> dict:
                         changed += 1
                     except Exception:
                         stats["errors"] += 1
+
+            # OpenCode + Pi come in via the agent-sessions library, which
+            # returns summaries rather than file paths. Imported lazily so
+            # the indexer can still run if the dep is missing.
+            try:
+                from .external import EXTERNAL_TOOLS, list_external_sessions
+            except Exception:
+                EXTERNAL_TOOLS = ()
+                list_external_sessions = None
+
+            for tool in EXTERNAL_TOOLS:
+                stats.setdefault(f"{tool}_new", 0)
+                stats.setdefault(f"{tool}_updated", 0)
+                try:
+                    for rec in list_external_sessions(tool):
+                        prior = existing.get(rec.path)
+                        if prior and not force and abs(prior[1] - rec.mtime) < 1e-6:
+                            continue
+                        upsert(conn, rec)
+                        stats[f"{tool}_updated" if prior else f"{tool}_new"] += 1
+                        changed += 1
+                except Exception:
+                    stats["errors"] += 1
 
         if changed:
             refresh_fts(conn)
