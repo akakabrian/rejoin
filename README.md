@@ -5,8 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml/badge.svg)](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml)
 
-> **One dashboard for every coding agent you use.**
-> rejoin indexes Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes sessions into a single searchable view — web or terminal — and lets you tmux-resume any of them with one keystroke.
+> **One dashboard for every coding agent on your machine.**
+> rejoin gives you one searchable view across Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes — and lets you jump back into any session with one keystroke, no matter which agent you started it in.
 
 ![web dashboard screenshot](docs/img/dashboard.png)
 
@@ -22,10 +22,18 @@ When you want to pick up where you left off, you first have to remember
 turns into a scavenger hunt across six different session stores.
 
 **rejoin is the single pane of glass.** One keyboard-first dashboard — web
-or terminal — that auto-titles every session into a scannable headline
-("HTTP Client Query String Redaction", not `e0a57d18-…`), searches across
-all of them at once, groups by project, pins your favorites, and jumps
-back in via tmux with one keystroke.
+or terminal — that:
+
+- **Threads every agent's sessions into one searchable view.**
+  Auto-titles each one into a scannable headline ("HTTP Client Query String
+  Redaction", not `e0a57d18-…`); FTS5 search across the lot.
+- **Pin Thread** keeps the sessions you're actively working on at the top.
+  Star a thread once and it floats above everything else, across every
+  filter and view.
+- **Jump back in with one keystroke.** rejoin spawns the agent's own
+  resume command (`claude --resume`, `codex resume`, `hermes --resume`,
+  etc.) inside tmux when present — or hands you the exact command to paste
+  into any terminal you prefer.
 
 ## Try it in 30 seconds
 
@@ -49,7 +57,7 @@ A warm-beige browser dashboard borrowed from Claude.ai's visual identity. Scan s
 
 ### ⌨️ Terminal UI &nbsp;— Textual, tmux-aware
 
-The same dashboard as a first-class TUI. Inside tmux, pressing `Enter` on a row opens a new window in the current session and switches to it — no browser, no attach command, zero friction.
+The same dashboard as a first-class TUI. Inside tmux, `Enter` opens a new window with the agent already loaded — no browser, no attach command, zero friction. Outside tmux it falls back to a detached tmux session you can attach from anywhere, or you can copy the raw resume command and run it in whatever terminal you prefer.
 
 ![TUI demo](docs/img/demo.gif)
 
@@ -61,20 +69,20 @@ The same dashboard as a first-class TUI. Inside tmux, pressing `Enter` on a row 
 | --- | --- |
 | ✅ Indexes **all** your coding agents in one place | ❌ Not tied to any one harness |
 | ✅ **Reads** your local session files | ❌ **Never writes** to them |
-| ✅ Cross-agent search, group-by-cwd, pinning | ❌ No cloud sync |
-| ✅ One-click tmux rejoin | ❌ No auth / multi-user |
-| ✅ Web + terminal UIs | ❌ Not a CLI replacement for `claude -r` — *a superset* |
+| ✅ Cross-agent search, group-by-cwd, **Pin Thread** | ❌ No cloud sync |
+| ✅ One-keystroke jump-back-in (tmux or any terminal) | ❌ No auth / multi-user |
+| ✅ Web + terminal UIs | ❌ Not a replacement for `claude -r` / `codex resume` — *a superset* |
 | ✅ MIT, pure Python, small deps | ❌ Not a framework |
 
 ## Features
 
-- **Six tools**: Claude Code, Codex, OpenClaw, and Hermes via our own parsers (Hermes uses the tool's native titles); OpenCode and Pi via [`agent-sessions`](https://github.com/larsderidder/agent-sessions).
-- **Auto titles**: `qwen/qwen3-30b-a3b-instruct-2507` (~$7e-6 per title). Falls back to the first prompt if no key.
-- **Rejoin in tmux**: one click. Detached by default; inside tmux the TUI opens a new window in the current server.
-- **Incremental** reindex every 60 s, skipping unchanged mtimes.
-- **Search** (FTS5) with hit highlighting; **group by cwd**; **pin favorites** (★ floats to top).
-- **Active indicator**: pulses when (a) session file touched in last 2 min OR (b) a matching `--resume <id>` / `codex resume <id>` / `pi <id>` process is live.
-- **Keyboard-first**: `j`/`k`/`↑`/`↓` navigate, `Enter` rejoins, `p` pins, `/` focuses search.
+- **Six harnesses**: Claude Code, Codex, OpenClaw, and Hermes via our own parsers (Hermes contributes its native titles); OpenCode and Pi via [`agent-sessions`](https://github.com/larsderidder/agent-sessions).
+- **Jump back in, anywhere**: rejoin runs `claude --resume`, `codex resume`, `hermes --resume`, or the agent's equivalent — inside tmux when you have it, or as a paste-able command for any terminal.
+- **Pin Thread**: ★ a session and it stays at the top across every filter, search, and view. Use it for the 2–3 active threads you keep returning to.
+- **Auto-titled headlines**: `qwen/qwen3-30b-a3b-instruct-2507` writes a 3-6 word title for each session (~$7e-6 each). Falls back to the first prompt if no API key.
+- **Search** (FTS5 with hit highlighting), **group-by-project**, **active-session pulse** (`ps aux` + mtime).
+- **Incremental** reindex every 60 s. Reads only — never writes to your session files.
+- **Keyboard-first**: `j`/`k`/`↑`/`↓` navigate, `Enter` jumps in, `p` pins, `/` focuses search.
 
 ---
 
