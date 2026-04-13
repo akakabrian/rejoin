@@ -238,7 +238,7 @@ class SessionDashTUI(App):
         self.set_timer(reset_after, lambda: setattr(self, "status", self.DEFAULT_STATUS))
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        yield Header(show_clock=True, icon="")
         yield Input(placeholder="/ to search — esc to clear", id="search")
         with Horizontal(id="panes"):
             table = DataTable(id="sessions", cursor_type="row", zebra_stripes=False)
@@ -337,6 +337,18 @@ class SessionDashTUI(App):
         key = event.row_key.value if event.row_key else None
         self.selected_id = key
         self.render_transcript_for(self._row_by_id(key))
+
+    @on(DataTable.CellSelected)
+    def on_cell_selected(self, event: DataTable.CellSelected) -> None:
+        # Column 0 is the pin column — clicking anywhere in it toggles pin.
+        if event.coordinate.column != 0:
+            return
+        sid = event.cell_key.row_key.value if event.cell_key.row_key else None
+        if not sid:
+            return
+        pinned = _toggle_pin(sid)
+        self.set_transient_status(f"{'pinned' if pinned else 'unpinned'} {sid[:8]}")
+        self.refresh_sessions()
 
     # ---- data ----
 
