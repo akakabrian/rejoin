@@ -6,16 +6,23 @@
 
 A local dashboard for browsing and rejoining AI coding-agent sessions (Claude Code, Codex, OpenCode, Pi).
 
-![dashboard screenshot](docs/img/dashboard.png)
+Two front-ends that share one SQLite cache:
 
-<details>
-<summary>Terminal UI</summary>
+### 🖥️ Web UI &nbsp;— FastAPI + HTMX
+
+A warm-beige browser dashboard borrowed from Claude.ai's visual identity. Scan sessions in a two-pane layout, read the transcript in typographic serif/sans, click **rejoin in tmux** to pick back up where you left off.
+
+![web dashboard screenshot](docs/img/dashboard.png)
+
+### ⌨️ Terminal UI &nbsp;— Textual, tmux-aware
+
+The same dashboard as a first-class TUI. Inside tmux, pressing `Enter` on a row opens a new window in the current session and switches to it — no browser, no attach command, zero friction.
 
 ![TUI screenshot](docs/img/tui.svg)
 
-</details>
+---
 
-Indexes session files from four agents into SQLite, auto-titles each session via a cheap OpenRouter model, and lets you rejoin any session in `tmux` — from either a web UI (FastAPI + HTMX, warm beige aesthetic inspired by Claude.ai) or a terminal UI (Textual, tmux-aware).
+Under the hood: indexes session files from four agents into SQLite, auto-titles each session via a cheap OpenRouter model, and lets you rejoin any session in `tmux`.
 
 - **Four tools**: Claude Code and Codex (our own parsers — richer detail); OpenCode and Pi via [`agent-sessions`](https://github.com/larsderidder/agent-sessions).
 - **Auto titles**: `qwen/qwen3-30b-a3b-instruct-2507` (~$7e-6 per title). Falls back to the first prompt if no key.
