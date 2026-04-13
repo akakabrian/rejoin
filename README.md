@@ -1,65 +1,159 @@
 # rejoin
 
-A local dashboard for browsing and rejoining AI coding-agent sessions on your machine.
+A local dashboard for browsing and rejoining AI coding-agent sessions (Claude Code, Codex, OpenCode, Pi).
 
 ![dashboard screenshot](docs/img/dashboard.png)
 
-It indexes sessions from **Claude Code, Codex, OpenCode, and Pi** into SQLite, auto-titles each session via a cheap OpenRouter model, and lets you rejoin any session in a detached `tmux` — all from a warm beige UI that borrows heavily from Claude.ai's aesthetic.
+Indexes session files from four agents into SQLite, auto-titles each session via a cheap OpenRouter model, and lets you rejoin any session in `tmux` — from either a web UI (FastAPI + HTMX, warm beige aesthetic inspired by Claude.ai) or a terminal UI (Textual, tmux-aware).
 
-- **Four tools**: Claude Code and Codex via our own parsers (for Codex-compaction summary, model, tool-call count); OpenCode and Pi via [`agent-sessions`](https://github.com/larsderidder/agent-sessions).
-- **Auto titles**: every session gets a human-readable title from `qwen/qwen3-30b-a3b-instruct-2507` (~$7e-6 per title). Falls back to the first prompt if the API is down.
-- **Rejoin in tmux**: one click spawns a detached `tmux` session in the original `cwd`; the UI gives you the attach command.
-- **Incremental**: re-scans every 60s, skipping anything whose mtime is unchanged. Titles only regenerate when content actually changed.
-- **Search**: FTS5 over titles, first-and-last prompts, and Codex compaction summaries, with hit highlighting.
-- **Group by cwd**: nest the list under sticky project headers.
-- **Pin favorites**: ★ any session to float it to the top.
-- **Active indicator**: a session pulses when either (a) its file was touched in the last 2 min, or (b) a matching `--resume <id>` / `codex resume <id>` / `pi <id>` process is detected via `ps`.
-- **Keyboard-first**: `j`/`k` / `↑`/`↓` navigate, `Enter` rejoins, `p` pins, `/` focuses search.
+- **Four tools**: Claude Code and Codex (our own parsers — richer detail); OpenCode and Pi via [`agent-sessions`](https://github.com/larsderidder/agent-sessions).
+- **Auto titles**: `qwen/qwen3-30b-a3b-instruct-2507` (~$7e-6 per title). Falls back to the first prompt if no key.
+- **Rejoin in tmux**: one click. Detached by default; inside tmux the TUI opens a new window in the current server.
+- **Incremental** reindex every 60 s, skipping unchanged mtimes.
+- **Search** (FTS5) with hit highlighting; **group by cwd**; **pin favorites** (★ floats to top).
+- **Active indicator**: pulses when (a) session file touched in last 2 min OR (b) a matching `--resume <id>` / `codex resume <id>` / `pi <id>` process is live.
+- **Keyboard-first**: `j`/`k`/`↑`/`↓` navigate, `Enter` rejoins, `p` pins, `/` focuses search.
 
-## Install
+---
 
-Requires Python 3.11+ (uses `tomllib`), `tmux`, and Claude Code / Codex CLIs on `$PATH` (only needed at resume time).
+## Install (agent-friendly, copy-paste this exact sequence)
+
+### 1. Prerequisites
+
+Verify each of these returns a success exit code before continuing.
 
 ```bash
-git clone <repo-url> ~/AI/tools/rejoin
-cd ~/AI/tools/rejoin
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+python3 --version              # must print 3.11 or higher
+git --version                  # any version
+tmux -V                        # any version; required only for rejoin clicks
 ```
 
-The titler needs an OpenRouter API key. Three ways to provide it, resolved in this order:
+If `python3` is older than 3.11:
 
-1. Export `OPENROUTER_API_KEY` in your shell.
-2. Drop a `.env` at the project root with `OPENROUTER_API_KEY=sk-or-...` (gitignored).
-3. Point `OPENROUTER_ENV_FILE=/path/to/other/.env` if you already keep the key somewhere else and don't want to duplicate it.
+- Ubuntu/Debian: `sudo apt install python3.12 python3.12-venv`
+- macOS (Homebrew): `brew install python@3.12`
 
-If the titler can't find a key it falls back to using the first user prompt as the session title — everything else still works.
+If `tmux` is missing:
 
-## Run
+- Ubuntu/Debian: `sudo apt install tmux`
+- macOS: `brew install tmux`
 
-Two front-ends share the same SQLite index; run either or both.
+### 2. Clone
 
-**Web** (FastAPI + HTMX):
+```bash
+git clone https://github.com/<owner>/rejoin.git ~/AI/tools/rejoin
+cd ~/AI/tools/rejoin
+```
+
+Replace `<owner>` with the actual GitHub owner. The target path is arbitrary; `~/AI/tools/rejoin` is an example.
+
+### 3. Virtual env + install
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -e '.[dev]'
+```
+
+Verify:
+
+```bash
+.venv/bin/python -c "from rejoin.app import main; from rejoin.tui import main as tmain; print('ok')"
+# expected output: ok
+```
+
+### 4. Provide an OpenRouter API key (optional but recommended)
+
+Without a key, sessions get a fallback title (truncated first prompt). With a key, they get a ~5-word LLM-generated title for about $7×10⁻⁶ each.
+
+Pick one of three methods, in priority order:
+
+**Method A — shell env (most portable):**
+
+```bash
+export OPENROUTER_API_KEY="sk-or-v1-…"
+```
+
+**Method B — project-local `.env` (default for agents):**
+
+```bash
+echo 'OPENROUTER_API_KEY=sk-or-v1-…' > .env
+chmod 600 .env
+```
+
+This file is gitignored. It's the method most automated setups should use.
+
+**Method C — point at an existing `.env`:**
+
+```bash
+export OPENROUTER_ENV_FILE="/path/to/existing/.env"
+```
+
+Verify:
+
+```bash
+.venv/bin/python -c "from rejoin.config import openrouter_api_key; print('key:', 'yes' if openrouter_api_key() else 'no')"
+# expected: key: yes  (or 'no' if you skipped this step)
+```
+
+### 5. Run
 
 ```bash
 ./run.sh
 ```
 
-Binds `0.0.0.0:8767` by default (reachable from Tailnet peers). Override via config or env:
+Expected output on stdout:
 
-```bash
-REJOIN_HOST=127.0.0.1 REJOIN_PORT=9000 ./run.sh
+```
+INFO:     Started server process [NNNN]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8767
 ```
 
-Open `http://127.0.0.1:8767/` (or launch a Chrome app window with `google-chrome --app=http://127.0.0.1:8767/ --user-data-dir=/tmp/chrome-rejoin`).
+Open `http://127.0.0.1:8767/` in a browser. Or launch as a Chrome app window:
 
-**Terminal** (Textual TUI, tmux-aware):
+```bash
+google-chrome --app=http://127.0.0.1:8767/ --user-data-dir=/tmp/chrome-rejoin &
+```
+
+### 6. Verify end-to-end
+
+```bash
+curl -s http://127.0.0.1:8767/status
+# expected: {"last_indexed_age_s": <small number>}
+
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8767/
+# expected: 200
+```
+
+To use the **terminal UI** instead:
 
 ```bash
 ./run-tui.sh
 ```
 
-If launched inside tmux, pressing `Enter` on a row opens a new tmux window in the current session and switches to it. Outside tmux, it starts a detached session and prints the attach command in the status bar. Pins, titles, active indicator, FTS search, and the 30-second refresh interval all carry over from the web version.
+---
+
+## Configuration
+
+Create `~/.config/rejoin/config.toml` to override defaults. Every key is optional; see [`config.example.toml`](config.example.toml) for the full annotated list.
+
+```toml
+# ~/.config/rejoin/config.toml
+host                 = "127.0.0.1"    # "0.0.0.0" ONLY on trusted networks
+port                 = 8767
+model                = "qwen/qwen3-30b-a3b-instruct-2507"
+transcript_tail      = 40
+active_window_sec    = 120
+long_turn_lines      = 30
+long_turn_chars      = 1500
+refresh_interval_sec = 60
+title_concurrency    = 8
+turn_cache_size      = 16
+```
+
+Bad TOML prints a warning to stderr and falls back to defaults. Missing file → all defaults.
 
 ## Shortcuts
 
@@ -71,40 +165,31 @@ If launched inside tmux, pressing `Enter` on a row opens a new tmux window in th
 | `Enter` | rejoin the selected session in tmux |
 | `p` | pin / unpin the open session |
 | `/` | focus search |
-| `Esc` | blur search |
+| `Esc` | blur / clear search |
 
-Click the amber **★** next to any row to pin without opening it. Click the **↻** in the header to force a reindex + titling pass; the label next to it always shows `indexed Ns ago`.
-
-## Configuration
-
-Everything tunable lives in `~/.config/rejoin/config.toml`. A commented example is at [`config.example.toml`](config.example.toml); copy to the config path and edit.
-
-```toml
-# ~/.config/rejoin/config.toml
-model              = "qwen/qwen3-30b-a3b-instruct-2507"   # OpenRouter slug
-title_concurrency  = 8
-refresh_interval_sec = 60
-active_window_sec  = 120
-transcript_tail    = 40
-turn_cache_size    = 16
-long_turn_lines    = 30
-long_turn_chars    = 1500
-host               = "0.0.0.0"
-port               = 8767
-```
-
-Missing keys fall back to defaults. Bad TOML prints a warning to stderr and uses defaults.
+Click the amber **★** on any row to pin/unpin without opening the session. Click **↻** in the header to force a reindex; the `indexed Ns ago` label confirms the background loop is alive.
 
 ## Storage
 
 | path | purpose |
 | --- | --- |
-| `~/.local/share/rejoin/index.db` | SQLite index of sessions, titles, pins, and FTS5 |
+| `~/.local/share/rejoin/index.db` | SQLite cache (sessions, titles, pins, FTS5) — safe to delete |
 | `~/.config/rejoin/config.toml` | your overrides (optional) |
+| `<project>/.env` | project-local OpenRouter key (optional, gitignored) |
 | `~/.claude/projects/**/*.jsonl` | Claude Code source (read-only) |
 | `~/.codex/sessions/**/*.jsonl` | Codex source (read-only) |
+| `~/.local/share/opencode/opencode.db` | OpenCode source (read-only) |
+| `~/.pi/agent/sessions/**/*.jsonl` | Pi source (read-only) |
 
-rejoin **never writes** to Claude/Codex session files. The SQLite DB is a pure cache and can be deleted to force a clean reindex.
+rejoin **never writes** to session files. It only reads. The SQLite index is a pure cache; deleting it forces a clean reindex on next launch (titles re-generate).
+
+## Security / privacy
+
+The dashboard exposes your full transcript history — every prompt, every tool call, every response. Treat it as sensitive:
+
+- **Default bind is `127.0.0.1`.** The server is reachable only from the same machine.
+- **Only set `host = "0.0.0.0"`** on machines where you trust every peer on the network (e.g. a Tailnet-only host). There is no authentication.
+- Transcripts may include pasted secrets. Deleting a session file in `~/.claude` or `~/.codex` leaves the data in rejoin's SQLite cache until the next reindex-with-delete. If you want to purge: stop the server, delete `~/.local/share/rejoin/index.db`, restart.
 
 ## Architecture
 
@@ -112,26 +197,40 @@ rejoin **never writes** to Claude/Codex session files. The SQLite DB is a pure c
 rejoin/
 ├── common.py      # Tool Literal, iter_jsonl, text_of, utcnow_iso, short_cwd
 ├── config.py      # tomllib loader + defaults
-├── db.py          # sqlite schema (sessions, titles, pins, session_fts)
-├── indexer.py     # jsonl parsers + reindex() — PARSERS = {"claude":…, "codex":…}
-├── titler.py      # async OpenRouter batch with concurrency cap + content-hash skip
-├── transcript.py  # turn extraction for rendering (lazy, LRU-cached at the route layer)
-├── resume.py      # builds `cd <cwd> && <tool> --resume <id>` and launches via tmux
-└── app.py         # FastAPI routes, background refresh loop, HTMX templates
+├── db.py          # SQLite schema (sessions, titles, pins, session_fts); schema-version guard
+├── indexer.py     # Claude + Codex parsers; PARSERS registry; OpenCode+Pi via external.py
+├── titler.py      # async OpenRouter batch; concurrency cap; content-hash skip
+├── transcript.py  # turn extraction (claude, codex); opencode+pi delegate to external.py
+├── resume.py      # `cd <cwd> && <tool> --resume <id>`; tmux launch; missing-binary check
+├── external.py    # adapter for Lars de Ridder's agent-sessions library
+├── app.py         # FastAPI routes, background refresh loop, HTMX templates
+├── tui.py         # Textual TUI app, tmux-aware rejoin
+├── tui.tcss       # TUI stylesheet
+├── templates/     # HTMX-rendered HTML fragments
+└── static/        # web CSS + JS
 ```
-
-The `indexer.py` → `titler.py` → `app.py` pipeline is decoupled: indexer knows nothing about titles; titler knows nothing about the UI. Adding a third tool means one new parser in `PARSERS` and one new branch in `resume.py`.
 
 ## Troubleshooting
 
-- **"no OPENROUTER_API_KEY found"** — export it in your shell, or point `config.py` at a `.env` that has it.
-- **titles aren't updating for active sessions** — the content hash guards against redundant API calls; a session needs to actually change prompt/summary text to re-title.
-- **tmux session already running** — rejoin reuses `sess-<tool>-<uuid8>` if it's still alive. Kill it with `tmux kill-session -t sess-…` if you want a fresh start.
-- **port already in use** — `ss -tln | grep :<port>` to see who has it; change `port` in config.
+| symptom | fix |
+| --- | --- |
+| `'tmux' not found on PATH` in the resume response | install tmux (`sudo apt install tmux` or `brew install tmux`) |
+| port 8767 already in use | set `port = <other>` in config, or `REJOIN_PORT=<other> ./run.sh` |
+| titles stuck at truncated first prompt | `OPENROUTER_API_KEY` not found; see step 4 above |
+| dashboard is empty | you have no Claude/Codex/OpenCode/Pi sessions yet; run one and click ↻ |
+| `Schema version mismatch` on startup | back up and delete `~/.local/share/rejoin/index.db`, restart |
+| TUI shows no transcript on first launch | click any row; the first-paint transcript load races with the cursor init |
+
+## Tests
+
+```bash
+.venv/bin/pytest -q
+.venv/bin/ruff check rejoin tests
+```
 
 ## Credits
 
-The OpenCode and Pi providers, and the running-process detection, come from [`agent-sessions`](https://github.com/larsderidder/agent-sessions) by Lars de Ridder. MIT-licensed.
+OpenCode + Pi providers and running-process detection come from [`agent-sessions`](https://github.com/larsderidder/agent-sessions) by Lars de Ridder (MIT).
 
 ## License
 

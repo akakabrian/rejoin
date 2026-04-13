@@ -1,0 +1,53 @@
+{% macro row(s, q) -%}
+<tr hx-get="/session/{{ s.id }}" hx-target="#detail-pane" hx-swap="innerHTML"
+    class="session-row{% if s.pinned %} pinned{% endif %}{% if s.active %} active{% endif %}"
+    data-session-id="{{ s.id }}">
+  <td class="tool-col">
+    <button class="row-pin pin-btn {% if s.pinned %}pinned{% endif %}"
+            data-session-id="{{ s.id }}"
+            title="{% if s.pinned %}unpin{% else %}pin{% endif %}">★</button>
+    <span class="tag tag-{{ s.tool }}">{{ s.tool }}</span>
+    {% if s.active %}<span class="active-dot" title="activity in the last 2 min"></span>{% endif %}
+  </td>
+  <td class="title-cell">
+    <div class="title">{{ (s.ai_title or (s.first_prompt or "")[:80]) | highlight(q) }}</div>
+    {% if s.last_prompt and s.last_prompt != s.first_prompt %}
+      <div class="subtitle muted">last: {{ s.last_prompt[:90] | highlight(q) }}</div>
+    {% endif %}
+  </td>
+  <td class="cwd">{{ s.cwd | short_cwd }}</td>
+  <td class="muted nowrap">{{ s.last_activity[:10] if s.last_activity else "" }}<br><span class="tm">{{ s.last_activity[11:16] if s.last_activity else "" }}</span></td>
+  <td class="num">{{ s.message_count }}</td>
+  <td class="num">{{ s.tool_call_count }}</td>
+</tr>
+{%- endmacro %}
+
+{% if group and groups %}
+  {% for g in groups %}
+    <div class="cwd-group">
+      <div class="cwd-group-header">
+        <span class="cwd-group-path">{{ g.cwd if g.pinned_group else (g.cwd | short_cwd) }}</span>
+        <span class="cwd-group-count">{{ g.sessions|length }}</span>
+      </div>
+      <table class="session-table">
+        <tbody>
+        {% for s in g.sessions %}{{ row(s, q) }}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endfor %}
+{% else %}
+<table class="session-table">
+  <thead><tr>
+    <th></th><th>title</th><th>cwd</th><th>activity</th>
+    <th class="num">msgs</th><th class="num">tools</th>
+  </tr></thead>
+  <tbody>
+  {% for s in sessions %}{{ row(s, q) }}
+  {% else %}
+    <tr><td colspan="6" class="muted">no sessions</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+<p class="muted count">{{ sessions|length }} sessions{% if q %} · matching "{{ q }}"{% endif %}</p>

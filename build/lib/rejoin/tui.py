@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -23,11 +23,6 @@ from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
 from .common import Tool, iso_to_epoch, short_cwd
-from .config import ACTIVE_WINDOW_SEC, TRANSCRIPT_TAIL, TURN_CACHE_SIZE
-from .db import connect, init_db
-from .indexer import reindex
-from .resume import resume_command, tmux_session_name
-from .transcript import load_turns
 
 _TOOL_COLORS: dict[str, str] = {
     "claude":   "#C15F3C",
@@ -35,6 +30,12 @@ _TOOL_COLORS: dict[str, str] = {
     "opencode": "#6940B0",
     "pi":       "#2E5D8E",
 }
+from .config import ACTIVE_WINDOW_SEC, TRANSCRIPT_TAIL, TURN_CACHE_SIZE
+from .db import connect, init_db
+from .indexer import reindex
+from .resume import resume_command, tmux_session_name
+from .transcript import load_turns
+
 
 # ---------- data access ----------
 
@@ -57,7 +58,7 @@ def _fetch_sessions(q: str | None = None, limit: int = 500) -> list[dict]:
                  s.last_activity DESC
         LIMIT :limit
     """
-    now = datetime.now(UTC).timestamp()
+    now = datetime.now(timezone.utc).timestamp()
     try:
         from .external import running_session_ids
         running = running_session_ids()
@@ -75,7 +76,7 @@ def _fetch_sessions(q: str | None = None, limit: int = 500) -> list[dict]:
 
 
 def _toggle_pin(session_id: str) -> bool:
-    now = datetime.now(UTC).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     with connect() as conn:
         existing = conn.execute(
             "SELECT 1 FROM pins WHERE session_id=:id", {"id": session_id}

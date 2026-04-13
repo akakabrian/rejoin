@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Iterator, Literal
 
 Tool = Literal["claude", "codex", "opencode", "pi"]
 
@@ -16,7 +15,7 @@ _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 
 def utcnow_iso() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def iso_to_epoch(s: str | None) -> float:

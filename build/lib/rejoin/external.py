@@ -9,8 +9,8 @@ battle-tested providers than duplicate the work.
 """
 from __future__ import annotations
 
-from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Iterator
 
 from agent_sessions import RunnerType, SessionSummary, get_session_detail
 from agent_sessions.providers.opencode import list_opencode_sessions
@@ -22,7 +22,7 @@ from agent_sessions.running import (
     find_running_pi_sessions,
 )
 
-from .common import Tool
+from .common import Tool, utcnow_iso
 from .indexer import SessionRecord
 from .transcript import Turn
 

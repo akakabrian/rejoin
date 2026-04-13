@@ -33,6 +33,8 @@ long_turn_lines = 30
 long_turn_chars = 1500
 
 # -- Server ---------------------------------------------------------------
-# 0.0.0.0 makes it reachable from Tailnet peers; 127.0.0.1 is local-only.
-host = "0.0.0.0"
+# 127.0.0.1 keeps the dashboard local-only (default). Use "0.0.0.0" ONLY
+# if you trust every peer on the network (Tailnet, VPN, etc.) — the
+# dashboard exposes your complete session transcript history.
+host = "127.0.0.1"
 port = 8767

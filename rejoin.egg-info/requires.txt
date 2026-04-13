@@ -1,0 +1,11 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+jinja2>=3.1
+httpx>=0.27
+python-dotenv>=1.0
+textual>=0.60
+agent-sessions<1.0,>=0.2
+
+[dev]
+pytest>=7
+ruff>=0.4

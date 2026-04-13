@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Iterator
 
 from .common import Tool, iter_jsonl, text_of
 

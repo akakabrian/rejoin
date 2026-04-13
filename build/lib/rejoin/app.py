@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -25,7 +25,7 @@ from .config import (
 )
 from .db import connect, init_db
 from .indexer import reindex
-from .resume import MissingBinary, launch_tmux, resume_command
+from .resume import launch_tmux, resume_command
 from .titler import backfill_titles
 from .transcript import load_turns
 
@@ -38,7 +38,7 @@ _LAST_INDEXED_AT: float | None = None
 
 def _mark_indexed() -> None:
     global _LAST_INDEXED_AT
-    _LAST_INDEXED_AT = datetime.now(UTC).timestamp()
+    _LAST_INDEXED_AT = datetime.now(timezone.utc).timestamp()
 
 
 def _is_active(last_activity: str | None, now_epoch: float,
@@ -125,11 +125,9 @@ def _fetch_sessions(
     where: list[str] = []
     params: dict = {"limit": limit}
     if tool:
-        where.append("s.tool = :tool")
-        params["tool"] = tool
+        where.append("s.tool = :tool"); params["tool"] = tool
     if cwd:
-        where.append("s.cwd = :cwd")
-        params["cwd"] = cwd
+        where.append("s.cwd = :cwd"); params["cwd"] = cwd
 
     sql = """
         SELECT s.*, t.title as ai_title,
@@ -153,7 +151,7 @@ def _fetch_sessions(
         LIMIT :limit
     """
 
-    now_epoch = datetime.now(UTC).timestamp()
+    now_epoch = datetime.now(timezone.utc).timestamp()
     running = _running_ids()
     with connect() as conn:
         rows = conn.execute(sql, params).fetchall()
@@ -187,7 +185,7 @@ def _get_session(session_id: str) -> dict | None:
         return None
     d = dict(row)
     d["active"] = _is_active(d.get("last_activity"),
-                             datetime.now(UTC).timestamp(),
+                             datetime.now(timezone.utc).timestamp(),
                              _running_ids(), d.get("id"))
     return d
 
@@ -303,10 +301,7 @@ def session_resume(session_id: str) -> JSONResponse:
     row = _get_session(session_id)
     if not row:
         return JSONResponse({"error": "not found"}, status_code=404)
-    try:
-        return JSONResponse(launch_tmux(row["tool"], session_id, row["cwd"]))
-    except MissingBinary as e:
-        return JSONResponse({"error": str(e)}, status_code=503)
+    return JSONResponse(launch_tmux(row["tool"], session_id, row["cwd"]))
 
 
 @app.post("/reindex")
@@ -322,14 +317,13 @@ async def api_reindex(titles: bool = Query(True)) -> JSONResponse:
 def api_status() -> JSONResponse:
     age = None
     if _LAST_INDEXED_AT is not None:
-        age = datetime.now(UTC).timestamp() - _LAST_INDEXED_AT
+        age = datetime.now(timezone.utc).timestamp() - _LAST_INDEXED_AT
     return JSONResponse({"last_indexed_age_s": age})
 
 
 def main() -> None:
     """Entrypoint for `rejoin` console script. Runs uvicorn with config values."""
     import os
-
     import uvicorn
 
     from .config import HOST, PORT

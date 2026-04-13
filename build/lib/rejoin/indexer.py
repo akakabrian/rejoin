@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable, Iterable
 
 from .common import Tool, iter_jsonl, text_of, utcnow_iso, uuid_from_stem
 from .config import CLAUDE_PROJECTS_ROOT, CODEX_SESSIONS_ROOT
@@ -39,7 +39,7 @@ def _stat_record(path: Path, tool: Tool, id_: str = "") -> SessionRecord:
         path=str(path),
         mtime=stat.st_mtime,
         size=stat.st_size,
-        last_activity=datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+        last_activity=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
     )
 
 
