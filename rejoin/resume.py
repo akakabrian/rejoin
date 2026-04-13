@@ -28,6 +28,8 @@ def resume_command(tool: str, session_id: str, cwd: str | None) -> str:
         inner = f"codex resume {shlex.quote(session_id)}"
     elif tool == "pi":
         inner = f"pi {shlex.quote(session_id)}"
+    elif tool == "hermes":
+        inner = f"hermes --resume {shlex.quote(session_id)}"
     elif tool == "openclaw":
         # OpenClaw doesn't expose a `resume` subcommand; closest interactive
         # flow is `openclaw agent --session-id <id>` with a follow-up message.

@@ -260,6 +260,34 @@ def reindex(force: bool = False) -> dict:
                 except Exception:
                     stats["errors"] += 1
 
+            # Hermes uses a single SQLite DB (~/.hermes/state.db). Read it
+            # directly and upsert each session. Native Hermes titles land in
+            # the `titles` table so our OpenRouter titler doesn't regenerate.
+            stats.setdefault("hermes_new", 0)
+            stats.setdefault("hermes_updated", 0)
+            try:
+                from .hermes import list_hermes_sessions
+                for raw in list_hermes_sessions():
+                    native_title = raw.pop("native_title", None)
+                    rec = SessionRecord(**{k: v for k, v in raw.items()
+                                           if k != "indexed_at"})
+                    prior = existing.get(rec.path)
+                    upsert(conn, rec)
+                    stats["hermes_updated" if prior else "hermes_new"] += 1
+                    changed += 1
+                    if native_title:
+                        conn.execute(
+                            """INSERT INTO titles
+                                (session_id, title, content_hash, generated_at, tokens_in, tokens_out)
+                                VALUES (:id, :t, 'hermes-native', :now, 0, 0)
+                                ON CONFLICT(session_id) DO UPDATE SET
+                                    title = excluded.title,
+                                    content_hash = excluded.content_hash""",
+                            {"id": rec.id, "t": native_title, "now": utcnow_iso()},
+                        )
+            except Exception:
+                stats["errors"] += 1
+
         if changed:
             refresh_fts(conn)
     return stats

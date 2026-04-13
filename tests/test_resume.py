@@ -27,6 +27,11 @@ def test_resume_command_openclaw():
     assert "-m continue" in cmd
 
 
+def test_resume_command_hermes():
+    cmd = resume_command("hermes", "abc-123", "/tmp")
+    assert "hermes --resume abc-123" in cmd
+
+
 def test_resume_command_opencode_has_no_session_arg():
     cmd = resume_command("opencode", "abc-123", "/tmp")
     assert "opencode" in cmd

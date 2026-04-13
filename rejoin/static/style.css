@@ -233,6 +233,7 @@ main {
 .tag-opencode { background: rgba(121, 82, 197, 0.14); color: #6940B0; }
 .tag-pi       { background: rgba(52, 110, 177, 0.14); color: #2E5D8E; }
 .tag-openclaw { background: rgba(220, 80, 50, 0.14);  color: #B8432A; }
+.tag-hermes   { background: rgba(139, 71, 137, 0.16); color: #7A3F74; }
 .count { margin: 10px 4px; font-family: var(--font-mono); font-size: 11px; color: var(--cloudy-dim); }
 
 /* ---------- detail header ---------- */

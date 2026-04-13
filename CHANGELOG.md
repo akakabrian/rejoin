@@ -5,6 +5,18 @@ All notable changes to **rejoin** are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-04-12
+
+### Added
+- **Hermes Agent** support via direct read of `~/.hermes/state.db` (SQLite).
+  Shapes Hermes's sessions/messages tables into our SessionRecord + Turn
+  model without writing to the DB.
+- **Uses Hermes's native title** when present. Inserted into our `titles`
+  table with content_hash `hermes-native` so the OpenRouter titler
+  doesn't waste tokens regenerating.
+- Resume: `hermes --resume <id>` (Hermes's native flag; fully interactive).
+- Magenta `#7A3F74` tag color in both front-ends.
+
 ## [0.2.0] — 2026-04-12
 
 ### Added

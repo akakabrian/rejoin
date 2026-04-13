@@ -6,7 +6,7 @@
 [![CI](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml/badge.svg)](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml)
 
 > **One dashboard for every coding agent you use.**
-> rejoin indexes Claude Code, Codex, OpenCode, Pi, and OpenClaw sessions into a single searchable view — web or terminal — and lets you tmux-resume any of them with one keystroke.
+> rejoin indexes Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes sessions into a single searchable view — web or terminal — and lets you tmux-resume any of them with one keystroke.
 
 ## Why
 

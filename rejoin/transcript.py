@@ -133,4 +133,11 @@ def load_turns(tool: Tool, path: Path) -> list[Turn]:
         except Exception:
             return []
         return list(iter_external_turns(tool, session_id))
+    if tool == "hermes":
+        session_id = str(path).rsplit("/", 1)[-1]
+        try:
+            from .hermes import iter_hermes_turns
+        except Exception:
+            return []
+        return list(iter_hermes_turns(session_id))
     raise ValueError(f"unknown tool: {tool}")

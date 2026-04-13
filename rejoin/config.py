@@ -11,6 +11,7 @@ HOME = Path.home()
 CLAUDE_PROJECTS_ROOT = HOME / ".claude" / "projects"
 CODEX_SESSIONS_ROOT = HOME / ".codex" / "sessions"
 OPENCLAW_AGENTS_ROOT = HOME / ".openclaw" / "agents"
+HERMES_DB_PATH = HOME / ".hermes" / "state.db"
 
 DATA_DIR = HOME / ".local" / "share" / "rejoin"
 DB_PATH = DATA_DIR / "index.db"
