@@ -79,6 +79,36 @@ def test_parse_codex_session_minimal(tmp_path):
     assert rec.message_count == 2
 
 
+def test_parse_openclaw_session(tmp_path):
+    from rejoin.indexer import parse_openclaw_session
+    path = tmp_path / "abc-123.jsonl"
+    events = [
+        {"type": "session", "id": "abc-123",
+         "cwd": "/home/u/proj", "timestamp": "2026-04-01T00:00:00Z"},
+        {"type": "message", "timestamp": "2026-04-01T00:00:05Z",
+         "message": {"role": "user", "content": "build me a thing"}},
+        {"type": "message", "timestamp": "2026-04-01T00:00:10Z",
+         "message": {"role": "assistant", "model": "claude-opus-4",
+                     "content": [
+                         {"type": "toolCall", "name": "shell", "input": {}},
+                         {"type": "text", "text": "on it"},
+                     ]}},
+        {"type": "message", "timestamp": "2026-04-01T00:01:00Z",
+         "message": {"role": "user", "content": "thanks"}},
+    ]
+    path.write_text("\n".join(json.dumps(e) for e in events))
+    rec = parse_openclaw_session(path)
+    assert rec is not None
+    assert rec.tool == "openclaw"
+    assert rec.id == "abc-123"
+    assert rec.cwd == "/home/u/proj"
+    assert rec.first_prompt == "build me a thing"
+    assert rec.last_prompt == "thanks"
+    assert rec.model == "claude-opus-4"
+    assert rec.tool_call_count == 1
+    assert rec.message_count == 3
+
+
 def test_parse_codex_session_recovers_id_from_filename(tmp_path):
     path = tmp_path / "rollout-2026-04-07T11-02-54-019d69c1-6142-7670-966f-61d8d2684158.jsonl"
     path.write_text('{"type":"response_item","payload":{"type":"message","role":"user","content":[]}}\n')

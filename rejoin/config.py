@@ -10,6 +10,7 @@ from dotenv import dotenv_values
 HOME = Path.home()
 CLAUDE_PROJECTS_ROOT = HOME / ".claude" / "projects"
 CODEX_SESSIONS_ROOT = HOME / ".codex" / "sessions"
+OPENCLAW_AGENTS_ROOT = HOME / ".openclaw" / "agents"
 
 DATA_DIR = HOME / ".local" / "share" / "rejoin"
 DB_PATH = DATA_DIR / "index.db"

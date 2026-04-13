@@ -21,6 +21,12 @@ def test_resume_command_pi():
     assert "cd ~" in cmd
 
 
+def test_resume_command_openclaw():
+    cmd = resume_command("openclaw", "abc-123", "/tmp")
+    assert "openclaw agent --session-id abc-123" in cmd
+    assert "-m continue" in cmd
+
+
 def test_resume_command_opencode_has_no_session_arg():
     cmd = resume_command("opencode", "abc-123", "/tmp")
     assert "opencode" in cmd

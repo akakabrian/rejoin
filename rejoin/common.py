@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-Tool = Literal["claude", "codex", "opencode", "pi"]
+Tool = Literal["claude", "codex", "opencode", "pi", "openclaw"]
 
 TEXT_PART_TYPES = frozenset({"text", "input_text", "output_text"})
 

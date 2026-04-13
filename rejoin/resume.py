@@ -28,6 +28,11 @@ def resume_command(tool: str, session_id: str, cwd: str | None) -> str:
         inner = f"codex resume {shlex.quote(session_id)}"
     elif tool == "pi":
         inner = f"pi {shlex.quote(session_id)}"
+    elif tool == "openclaw":
+        # OpenClaw doesn't expose a `resume` subcommand; closest interactive
+        # flow is `openclaw agent --session-id <id>` with a follow-up message.
+        # We default to 'continue' which the user can edit in the tmux window.
+        inner = f"openclaw agent --session-id {shlex.quote(session_id)} -m continue"
     elif tool == "opencode":
         # OpenCode doesn't expose session IDs on the CLI (no --resume flag).
         # Best we can do is drop into the project dir and relaunch; the user

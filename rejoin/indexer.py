@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .common import Tool, iter_jsonl, text_of, utcnow_iso, uuid_from_stem
-from .config import CLAUDE_PROJECTS_ROOT, CODEX_SESSIONS_ROOT
+from .config import CLAUDE_PROJECTS_ROOT, CODEX_SESSIONS_ROOT, OPENCLAW_AGENTS_ROOT
 from .db import connect, init_db, refresh_fts, transaction
 
 
@@ -130,9 +130,50 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
     return rec
 
 
+def parse_openclaw_session(path: Path) -> SessionRecord | None:
+    """OpenClaw uses Pi's JSONL format but nests sessions under
+    ~/.openclaw/agents/<agentId>/sessions/<sessionId>.jsonl.
+    Session header line: {"type": "session", "id": ..., "cwd": ...}.
+    """
+    rec = _stat_record(path, "openclaw", id_=path.stem)
+    first_user_text: str | None = None
+    last_user_text: str | None = None
+    for evt in iter_jsonl(path):
+        et = evt.get("type")
+        ts = evt.get("timestamp")
+        if et == "session":
+            rec.id = evt.get("id") or rec.id
+            rec.started_at = ts
+            rec.cwd = evt.get("cwd")
+            continue
+        if et != "message":
+            continue
+        msg = evt.get("message", {}) or {}
+        role = msg.get("role")
+        text = text_of(msg.get("content", ""))
+        if role == "user" and text:
+            rec.message_count += 1
+            if first_user_text is None:
+                first_user_text = text
+            last_user_text = text
+        elif role == "assistant":
+            rec.message_count += 1
+            if msg.get("model") and not rec.model:
+                rec.model = msg["model"]
+            for part in msg.get("content", []) or []:
+                if isinstance(part, dict) and part.get("type") == "toolCall":
+                    rec.tool_call_count += 1
+    if not rec.id:
+        rec.id = uuid_from_stem(path.stem)
+    rec.first_prompt = first_user_text
+    rec.last_prompt = last_user_text or first_user_text
+    return rec
+
+
 PARSERS: dict[Tool, Callable[[Path], SessionRecord | None]] = {
     "claude": parse_claude_session,
     "codex": parse_codex_session,
+    "openclaw": parse_openclaw_session,
 }
 
 
@@ -141,6 +182,8 @@ def _iter_paths(tool: Tool) -> Iterable[Path]:
         return CLAUDE_PROJECTS_ROOT.glob("*/*.jsonl")
     if tool == "codex":
         return CODEX_SESSIONS_ROOT.glob("**/rollout-*.jsonl")
+    if tool == "openclaw":
+        return OPENCLAW_AGENTS_ROOT.glob("*/sessions/*.jsonl")
     return []
 
 

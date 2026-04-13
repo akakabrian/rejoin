@@ -82,9 +82,42 @@ def iter_codex_turns(path: Path) -> Iterator[Turn]:
             yield Turn("tool_result", str(output)[:4000], {})
 
 
+def iter_openclaw_turns(path: Path) -> Iterator[Turn]:
+    """OpenClaw JSONL: header line + message lines with
+    message.role, message.content (str or list of typed blocks)."""
+    for evt in iter_jsonl(path):
+        if evt.get("type") != "message":
+            continue
+        msg = evt.get("message", {}) or {}
+        role = msg.get("role")
+        ts = evt.get("timestamp")
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            if role in ("user", "assistant") and content:
+                yield Turn(role, content, {"ts": ts, "model": msg.get("model")})
+            continue
+        if not isinstance(content, list):
+            continue
+        for p in content:
+            if not isinstance(p, dict):
+                continue
+            pt = p.get("type")
+            if pt == "text":
+                if role in ("user", "assistant") and p.get("text"):
+                    yield Turn(role, p.get("text", ""),
+                               {"ts": ts, "model": msg.get("model")})
+            elif pt == "toolCall":
+                yield Turn("tool_use", _fmt_args(p.get("input", {})),
+                           {"name": p.get("name") or p.get("toolName")})
+            elif pt == "toolResult":
+                out = p.get("output", "") or p.get("content", "")
+                yield Turn("tool_result", str(out)[:4000], {})
+
+
 _ITERATORS: dict[Tool, Callable[[Path], Iterator[Turn]]] = {
     "claude": iter_claude_turns,
     "codex": iter_codex_turns,
+    "openclaw": iter_openclaw_turns,
 }
 
 

@@ -232,6 +232,7 @@ main {
 .tag-codex    { background: rgba(16, 163, 127, 0.14); color: #0E7D5F; }
 .tag-opencode { background: rgba(121, 82, 197, 0.14); color: #6940B0; }
 .tag-pi       { background: rgba(52, 110, 177, 0.14); color: #2E5D8E; }
+.tag-openclaw { background: rgba(220, 80, 50, 0.14);  color: #B8432A; }
 .count { margin: 10px 4px; font-family: var(--font-mono); font-size: 11px; color: var(--cloudy-dim); }
 
 /* ---------- detail header ---------- */

@@ -56,6 +56,7 @@ _TOOL_COLORS: dict[str, str] = {
     "codex":    "#0E7D5F",
     "opencode": "#6940B0",
     "pi":       "#2E5D8E",
+    "openclaw": "#B8432A",
 }
 
 # ---------- data access ----------
