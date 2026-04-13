@@ -16,11 +16,10 @@ from pathlib import Path
 
 from rich.text import Text
 from textual import on, work
-from textual.app import App, ComposeResult, SystemCommand
+from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.reactive import reactive
-from textual.screen import Screen
 from textual.theme import Theme
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
@@ -210,6 +209,7 @@ class SessionDashTUI(App):
     CSS_PATH = "tui.tcss"
     TITLE = "rejoin"
     SUB_TITLE = "claude · codex · opencode · pi"
+    ENABLE_COMMAND_PALETTE = False
 
     BINDINGS = [
         Binding("j,down", "cursor_down", "down", show=False),
@@ -236,20 +236,6 @@ class SessionDashTUI(App):
         """Show a status message briefly, then revert to the key-hint line."""
         self.status = msg
         self.set_timer(reset_after, lambda: setattr(self, "status", self.DEFAULT_STATUS))
-
-    def get_system_commands(self, screen: Screen):
-        """Trim the command-palette system commands to what belongs here.
-        Screenshot / Maximize / Quit are noise for a session browser; keep
-        Theme and Keys."""
-        if not self.ansi_color:
-            yield SystemCommand("Theme", "Change the current theme",
-                                self.action_change_theme)
-        if screen.query("HelpPanel"):
-            yield SystemCommand("Keys", "Hide the keys panel",
-                                self.action_hide_help_panel)
-        else:
-            yield SystemCommand("Keys", "Show key bindings and widget help",
-                                self.action_show_help_panel)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
