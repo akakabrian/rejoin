@@ -47,8 +47,8 @@ async def _generate_title(client: httpx.AsyncClient, api_key: str, content: str)
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://localhost/session-dash",
-            "X-Title": "session-dash",
+            "HTTP-Referer": "https://localhost/rejoin",
+            "X-Title": "rejoin",
         },
         json={
             "model": OPENROUTER_MODEL,

@@ -4,7 +4,7 @@ This is a small personal tool that other people might find useful. Keep that in 
 
 ## Shape of the project
 
-- **Runs locally.** No auth, no hosting, no container. The web and TUI front-ends share a SQLite cache at `~/.local/share/session-dash/index.db`.
+- **Runs locally.** No auth, no hosting, no container. The web and TUI front-ends share a SQLite cache at `~/.local/share/rejoin/index.db`.
 - **Minimal deps.** The runtime stack is `fastapi + uvicorn + jinja2 + httpx + python-dotenv + textual`. Adding a dep should have an obvious payoff.
 - **Readers only.** The indexer and titler only read from `~/.claude/projects/` and `~/.codex/sessions/`. We never modify session files.
 
@@ -20,8 +20,8 @@ python3 -m venv .venv
 ## Running the indexer / titler directly
 
 ```bash
-.venv/bin/python -m session_dash.indexer
-.venv/bin/python -m session_dash.titler
+.venv/bin/python -m rejoin.indexer
+.venv/bin/python -m rejoin.titler
 ```
 
 Both print a stats dict on exit.
@@ -40,10 +40,10 @@ If you add functionality, consider noting a smoke-test step above.
 ## Style
 
 - Python 3.11+ only (uses `tomllib`, `from __future__ import annotations`).
-- Shared helpers live in `session_dash/common.py`. Before adding a new utility, check there first.
+- Shared helpers live in `rejoin/common.py`. Before adding a new utility, check there first.
 - Tool-specific logic (Claude-only vs Codex-only) belongs behind the `PARSERS` registry in `indexer.py` or the `_ITERATORS` registry in `transcript.py`. Avoid `if tool == "claude"` branches outside those tables.
 - The web UI uses HTMX for interactivity; avoid JS frameworks.
-- CSS tokens live at the top of `static/style.css`; the TCSS for the TUI is in `session_dash/tui.tcss`.
+- CSS tokens live at the top of `static/style.css`; the TCSS for the TUI is in `rejoin/tui.tcss`.
 
 ## Adding a new CLI
 
@@ -52,7 +52,7 @@ To index sessions from another coding-agent CLI:
 1. Write `parse_X_session(path) -> SessionRecord | None` in `indexer.py`; add to `PARSERS`.
 2. Write `iter_X_turns(path) -> Iterator[Turn]` in `transcript.py`; add to `_ITERATORS`.
 3. Add the resume command in `resume.py`.
-4. Add a tag color in `static/style.css` and `session_dash/tui.py`.
+4. Add a tag color in `static/style.css` and `rejoin/tui.py`.
 
 ## Filing issues / PRs
 

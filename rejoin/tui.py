@@ -1,4 +1,4 @@
-"""Textual-based TUI for session-dash.
+"""Textual-based TUI for rejoin.
 
 Shares the same SQLite index with the web app; both can run simultaneously.
 Inside tmux, rejoin opens a new window in the current session and switches
@@ -171,7 +171,7 @@ def _render_transcript(tool: Tool, path: str, mtime: float) -> list[Text]:
 
 class SessionDashTUI(App):
     CSS_PATH = "tui.tcss"
-    TITLE = "session-dash"
+    TITLE = "rejoin"
     SUB_TITLE = "claude + codex"
 
     BINDINGS = [

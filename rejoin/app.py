@@ -31,7 +31,7 @@ from .transcript import load_turns
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-log = logging.getLogger("session_dash")
+log = logging.getLogger("rejoin")
 
 _LAST_INDEXED_AT: float | None = None
 
@@ -100,7 +100,7 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="session-dash", lifespan=lifespan)
+app = FastAPI(title="rejoin", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 

@@ -11,10 +11,10 @@ HOME = Path.home()
 CLAUDE_PROJECTS_ROOT = HOME / ".claude" / "projects"
 CODEX_SESSIONS_ROOT = HOME / ".codex" / "sessions"
 
-DATA_DIR = HOME / ".local" / "share" / "session-dash"
+DATA_DIR = HOME / ".local" / "share" / "rejoin"
 DB_PATH = DATA_DIR / "index.db"
 
-CONFIG_PATH = HOME / ".config" / "session-dash" / "config.toml"
+CONFIG_PATH = HOME / ".config" / "rejoin" / "config.toml"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ENV_PATH = PROJECT_ROOT / ".env"
 

@@ -1,5 +1,5 @@
-# session-dash — example configuration
-# Copy to ~/.config/session-dash/config.toml and edit; values here are defaults.
+# rejoin — example configuration
+# Copy to ~/.config/rejoin/config.toml and edit; values here are defaults.
 
 # -- Titling --------------------------------------------------------------
 # OpenRouter model slug used for the auto-title pass. Pick a cheap,

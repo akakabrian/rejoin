@@ -1,15 +1,15 @@
-# session-dash tutorial
+# rejoin tutorial
 
 A narrative first-run. Assumes you already have `claude` or `codex` (or both) installed and have run at least one session with either of them.
 
 ## 1. First launch
 
 ```bash
-cd ~/AI/tools/session-dash
+cd ~/AI/tools/rejoin
 ./run.sh
 ```
 
-Open `http://127.0.0.1:8767/`. The first thing that happens is an index pass — the server walks `~/.claude/projects/` and `~/.codex/sessions/`, reads one pass through each `*.jsonl`, and writes a row per session to `~/.local/share/session-dash/index.db`. On a fresh machine with ~30 sessions this takes a second or two.
+Open `http://127.0.0.1:8767/`. The first thing that happens is an index pass — the server walks `~/.claude/projects/` and `~/.codex/sessions/`, reads one pass through each `*.jsonl`, and writes a row per session to `~/.local/share/rejoin/index.db`. On a fresh machine with ~30 sessions this takes a second or two.
 
 Then the background titler kicks off. You'll see placeholder titles (the first 80 chars of the first user prompt) gradually replaced by real ones like `QuickBooks Health Check Real Validation` — that's `qwen/qwen3-30b-a3b-instruct-2507` writing a 5–8 word summary from the session's first prompt + Codex compaction summary (if any) + last prompt. The initial backfill for ~30 sessions costs fractions of a cent.
 
@@ -73,7 +73,7 @@ The list auto-polls every 30 seconds (pausing while you're typing in search). Th
 
 ## 6. Config
 
-Say you want shorter transcripts and a smaller active window. Create `~/.config/session-dash/config.toml`:
+Say you want shorter transcripts and a smaller active window. Create `~/.config/rejoin/config.toml`:
 
 ```toml
 transcript_tail   = 20
@@ -86,8 +86,8 @@ See [`config.example.toml`](../config.example.toml) for the full list.
 
 ## 7. Throwing it away
 
-session-dash is a pure cache layer. Nothing it writes is authoritative.
+rejoin is a pure cache layer. Nothing it writes is authoritative.
 
-- Delete `~/.local/share/session-dash/index.db` → next launch rebuilds everything from scratch. Titles will re-gen (costs a few cents).
-- Delete `~/.config/session-dash/config.toml` → back to defaults.
+- Delete `~/.local/share/rejoin/index.db` → next launch rebuilds everything from scratch. Titles will re-gen (costs a few cents).
+- Delete `~/.config/rejoin/config.toml` → back to defaults.
 - Delete the project directory → nothing else is affected. Your Claude and Codex session files are untouched.

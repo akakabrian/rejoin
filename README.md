@@ -1,4 +1,4 @@
-# session-dash
+# rejoin
 
 A local dashboard for browsing and rejoining Claude Code + Codex sessions on your machine.
 
@@ -21,8 +21,8 @@ It walks `~/.claude/projects/**/*.jsonl` and `~/.codex/sessions/**/*.jsonl`, ind
 Requires Python 3.11+ (uses `tomllib`), `tmux`, and Claude Code / Codex CLIs on `$PATH` (only needed at resume time).
 
 ```bash
-git clone <repo-url> ~/AI/tools/session-dash
-cd ~/AI/tools/session-dash
+git clone <repo-url> ~/AI/tools/rejoin
+cd ~/AI/tools/rejoin
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
@@ -48,10 +48,10 @@ Two front-ends share the same SQLite index; run either or both.
 Binds `0.0.0.0:8767` by default (reachable from Tailnet peers). Override via config or env:
 
 ```bash
-SESSION_DASH_HOST=127.0.0.1 SESSION_DASH_PORT=9000 ./run.sh
+REJOIN_HOST=127.0.0.1 REJOIN_PORT=9000 ./run.sh
 ```
 
-Open `http://127.0.0.1:8767/` (or launch a Chrome app window with `google-chrome --app=http://127.0.0.1:8767/ --user-data-dir=/tmp/chrome-session-dash`).
+Open `http://127.0.0.1:8767/` (or launch a Chrome app window with `google-chrome --app=http://127.0.0.1:8767/ --user-data-dir=/tmp/chrome-rejoin`).
 
 **Terminal** (Textual TUI, tmux-aware):
 
@@ -77,10 +77,10 @@ Click the amber **★** next to any row to pin without opening it. Click the **�
 
 ## Configuration
 
-Everything tunable lives in `~/.config/session-dash/config.toml`. A commented example is at [`config.example.toml`](config.example.toml); copy to the config path and edit.
+Everything tunable lives in `~/.config/rejoin/config.toml`. A commented example is at [`config.example.toml`](config.example.toml); copy to the config path and edit.
 
 ```toml
-# ~/.config/session-dash/config.toml
+# ~/.config/rejoin/config.toml
 model              = "qwen/qwen3-30b-a3b-instruct-2507"   # OpenRouter slug
 title_concurrency  = 8
 refresh_interval_sec = 60
@@ -99,17 +99,17 @@ Missing keys fall back to defaults. Bad TOML prints a warning to stderr and uses
 
 | path | purpose |
 | --- | --- |
-| `~/.local/share/session-dash/index.db` | SQLite index of sessions, titles, pins, and FTS5 |
-| `~/.config/session-dash/config.toml` | your overrides (optional) |
+| `~/.local/share/rejoin/index.db` | SQLite index of sessions, titles, pins, and FTS5 |
+| `~/.config/rejoin/config.toml` | your overrides (optional) |
 | `~/.claude/projects/**/*.jsonl` | Claude Code source (read-only) |
 | `~/.codex/sessions/**/*.jsonl` | Codex source (read-only) |
 
-session-dash **never writes** to Claude/Codex session files. The SQLite DB is a pure cache and can be deleted to force a clean reindex.
+rejoin **never writes** to Claude/Codex session files. The SQLite DB is a pure cache and can be deleted to force a clean reindex.
 
 ## Architecture
 
 ```
-session_dash/
+rejoin/
 ├── common.py      # Tool Literal, iter_jsonl, text_of, utcnow_iso, short_cwd
 ├── config.py      # tomllib loader + defaults
 ├── db.py          # sqlite schema (sessions, titles, pins, session_fts)
