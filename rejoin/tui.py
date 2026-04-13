@@ -186,25 +186,31 @@ def _render_transcript(tool: Tool, path: str, mtime: float) -> list[Text]:
 class SessionDashTUI(App):
     CSS_PATH = "tui.tcss"
     TITLE = "rejoin"
-    SUB_TITLE = "claude + codex"
+    SUB_TITLE = "↵ rejoin · p pin · / search · q quit"
 
     BINDINGS = [
         Binding("j,down", "cursor_down", "down", show=False),
         Binding("k,up", "cursor_up", "up", show=False),
-        Binding("g", "top", "top"),
-        Binding("G", "bottom", "end"),
-        Binding("enter", "rejoin", "rejoin"),
+        Binding("enter", "rejoin", "rejoin in tmux", key_display="↵"),
         Binding("p", "pin", "pin"),
-        Binding("slash", "focus_search", "search"),
-        Binding("escape", "clear_search", "clear", show=False),
+        Binding("slash", "focus_search", "search", key_display="/"),
         Binding("r", "reindex", "reindex"),
+        Binding("g", "top", "top", show=False),
+        Binding("G", "bottom", "end", show=False),
+        Binding("escape", "clear_search", "clear", show=False),
         Binding("q", "quit", "quit"),
     ]
+    DEFAULT_STATUS = ""  # key hints live in the header subtitle
 
     query: reactive[str] = reactive("")
     sessions: reactive[list[dict]] = reactive(list, always_update=True)
     status: reactive[str] = reactive("loading…")
     selected_id: reactive[str | None] = reactive(None)
+
+    def set_transient_status(self, msg: str, reset_after: float = 4.0) -> None:
+        """Show a status message briefly, then revert to the key-hint line."""
+        self.status = msg
+        self.set_timer(reset_after, lambda: setattr(self, "status", self.DEFAULT_STATUS))
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -224,6 +230,7 @@ class SessionDashTUI(App):
         search.display = False
         self.refresh_sessions()
         self.query_one(DataTable).focus()
+        self.status = self.DEFAULT_STATUS
         self.set_interval(30.0, self.refresh_sessions)
 
     # ---- actions ----
@@ -263,22 +270,27 @@ class SessionDashTUI(App):
         if not sid:
             return
         pinned = _toggle_pin(sid)
-        self.status = f"{'pinned' if pinned else 'unpinned'} {sid[:8]}"
+        self.set_transient_status(f"{'pinned' if pinned else 'unpinned'} {sid[:8]}")
         self.refresh_sessions()
 
     def action_rejoin(self) -> None:
         row = self._current_row()
         if not row:
+            self.set_transient_status("no session selected")
             return
-        msg = _rejoin(row["tool"], row["id"], row["cwd"])
-        self.status = msg
+        try:
+            msg = _rejoin(row["tool"], row["id"], row["cwd"])
+        except Exception as e:
+            self.set_transient_status(f"rejoin failed: {e}", reset_after=8.0)
+            return
+        self.set_transient_status(msg, reset_after=8.0)
 
     @work(thread=True)
     def action_reindex(self) -> None:
-        self.call_from_thread(setattr, self, "status", "reindexing…")
+        self.call_from_thread(self.set_transient_status, "reindexing…", 30.0)
         stats = reindex(False)
         changed = stats["claude_new"] + stats["claude_updated"] + stats["codex_new"] + stats["codex_updated"]
-        self.call_from_thread(setattr, self, "status",
+        self.call_from_thread(self.set_transient_status,
                               f"reindex: {changed} changed")
         self.call_from_thread(self.refresh_sessions)
 
