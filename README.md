@@ -8,6 +8,8 @@
 > **One dashboard for every coding agent you use.**
 > rejoin indexes Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes sessions into a single searchable view — web or terminal — and lets you tmux-resume any of them with one keystroke.
 
+![web dashboard screenshot](docs/img/dashboard.png)
+
 ## Why
 
 Using more than one coding agent means your work gets scattered. Claude
@@ -43,9 +45,7 @@ Full install with API-key setup → [Install](#install-agent-friendly-copy-paste
 
 ### 🖥️ Web UI &nbsp;— FastAPI + HTMX
 
-A warm-beige browser dashboard borrowed from Claude.ai's visual identity. Scan sessions in a two-pane layout, read the transcript in typographic serif/sans, click **rejoin in tmux** to pick back up where you left off.
-
-![web dashboard screenshot](docs/img/dashboard.png)
+A warm-beige browser dashboard borrowed from Claude.ai's visual identity. Scan sessions in a two-pane layout, read the transcript in typographic serif/sans, click **rejoin in tmux** to pick back up where you left off. *(Hero shot above.)*
 
 ### ⌨️ Terminal UI &nbsp;— Textual, tmux-aware
 
