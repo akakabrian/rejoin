@@ -27,7 +27,13 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-The titler needs an OpenRouter API key. Set `OPENROUTER_API_KEY` in your environment, or drop it in a `.env` that `python-dotenv` can find. (The bundled `config.py` also falls back to reading the key from `~/AI/projects/Paa Prefab CRM/.env` — delete that branch if it's not useful to you.)
+The titler needs an OpenRouter API key. Three ways to provide it, resolved in this order:
+
+1. Export `OPENROUTER_API_KEY` in your shell.
+2. Drop a `.env` at the project root with `OPENROUTER_API_KEY=sk-or-...` (gitignored).
+3. Point `OPENROUTER_ENV_FILE=/path/to/other/.env` if you already keep the key somewhere else and don't want to duplicate it.
+
+If the titler can't find a key it falls back to using the first user prompt as the session title — everything else still works.
 
 ## Run
 

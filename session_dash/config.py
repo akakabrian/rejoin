@@ -15,7 +15,8 @@ DATA_DIR = HOME / ".local" / "share" / "session-dash"
 DB_PATH = DATA_DIR / "index.db"
 
 CONFIG_PATH = HOME / ".config" / "session-dash" / "config.toml"
-CRM_ENV_PATH = HOME / "AI" / "projects" / "Paa Prefab CRM" / ".env"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ENV_PATH = PROJECT_ROOT / ".env"
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -59,12 +60,25 @@ PORT: int = _cfg["port"]
 
 
 def openrouter_api_key() -> str | None:
+    """Resolve the OpenRouter key from (in order):
+
+    1. $OPENROUTER_API_KEY
+    2. A .env at the project root (gitignored; create if you want)
+    3. An .env file pointed to by $OPENROUTER_ENV_FILE (useful if you
+       already keep the key in another project's .env)
+    """
     key = os.environ.get("OPENROUTER_API_KEY")
     if key:
         return key
-    if CRM_ENV_PATH.exists():
-        vals = dotenv_values(CRM_ENV_PATH)
-        return vals.get("OPENROUTER_API_KEY")
+    if PROJECT_ENV_PATH.exists():
+        key = dotenv_values(PROJECT_ENV_PATH).get("OPENROUTER_API_KEY")
+        if key:
+            return key
+    env_file = os.environ.get("OPENROUTER_ENV_FILE")
+    if env_file:
+        path = Path(env_file).expanduser()
+        if path.exists():
+            return dotenv_values(path).get("OPENROUTER_API_KEY")
     return None
 
 
