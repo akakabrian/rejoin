@@ -1,8 +1,9 @@
 # rejoin
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/rejoin.svg)](https://pypi.org/project/rejoin/)
+[![Python 3.11+](https://img.shields.io/pypi/pyversions/rejoin.svg)](https://pypi.org/project/rejoin/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-copper.svg)](CHANGELOG.md)
+[![CI](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml/badge.svg)](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml)
 
 > **One dashboard for every coding agent you use.**
 > rejoin indexes Claude Code, Codex, OpenCode, and Pi sessions into a single searchable view — web or terminal — and lets you tmux-resume any of them with one keystroke.
@@ -26,10 +27,12 @@ So if you run more than one — and most of us do — you can't answer basic que
 ## Try it in 30 seconds
 
 ```bash
-pipx install git+https://github.com/akakabrian/rejoin.git
+pipx install rejoin
 rejoin         # web UI at http://127.0.0.1:8767
 rejoin-tui     # terminal UI (tmux-aware)
 ```
+
+Or `pip install rejoin` if you're not using pipx.
 
 Full install with API-key setup → [Install](#install-agent-friendly-copy-paste-this-exact-sequence). &nbsp;&nbsp; Walkthrough → [docs/TUTORIAL.md](docs/TUTORIAL.md).
 
@@ -320,7 +323,7 @@ MIT. See [LICENSE](LICENSE).
 >   regardless of which agent generated them.
 > - Group-by-cwd shows every agent you've used in a given project side by side.
 > - Pampas-beige web UI borrowed from Claude.ai's aesthetic; matching TUI.
-> - `pipx install git+https://github.com/akakabrian/rejoin.git`
+> - `pipx install rejoin`
 >
 > Python 3.11+, MIT. Runs locally — no auth, no cloud, never writes to your
 > session files. https://github.com/akakabrian/rejoin
