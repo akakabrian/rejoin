@@ -36,7 +36,7 @@ Pick a session you want to pick up. Two options:
 The server runs:
 
 ```bash
-tmux new-session -d -s sess-claude-dbdd414a 'cd /home/brian/AI/projects/Paa\ Prefab\ CRM && claude --resume dbdd414a-…'
+tmux new-session -d -s sess-claude-dbdd414a 'cd ~/projects/my-project && claude --resume dbdd414a-…'
 ```
 
 The UI shows:
@@ -56,7 +56,7 @@ Paste the attach command in any terminal (or run it over SSH/Tailnet if you're r
 You'll accumulate a lot of sessions. Three ways to cut through the noise:
 
 - **Search** — press `/`, type. FTS5 runs over titles, first/last prompts, Codex summaries. Matches are highlighted in amber. Works in real time (300ms debounce on keystroke).
-- **Filter by tool or cwd** — the two dropdowns in the header. Great for "just show me my Paa Prefab CRM work."
+- **Filter by tool or cwd** — the two dropdowns in the header. Great for "just show me my work in project X."
 - **Group by cwd** — check the `grouped` toggle. Sessions nest under sticky project headers, with a `★ pinned` group at the very top.
 
 Pinning: click the tiny ★ in any row's left column (it's faint beige until you hover the row, where it turns grey; clicking turns it full amber). Pinned sessions sort to the top across all views and filters. Press `p` to toggle the pin on the currently-open session.
