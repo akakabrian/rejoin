@@ -10,20 +10,18 @@
 
 ## Why
 
-Every coding agent ships its own little session picker:
+Your coding agents don't talk to each other. Claude writes JSONL in
+`~/.claude`, Codex in `~/.codex`, Hermes keeps a SQLite DB, OpenClaw nests
+its own tree. Every one of them ships a picker that sees only its own work.
 
-- Claude Code has `claude -r`, but only lists **Claude** sessions.
-- Codex has `codex resume`, but only lists **Codex** sessions.
-- Hermes has `hermes --resume`, but only lists **Hermes** sessions.
-- OpenCode, Pi, and OpenClaw each keep their sessions somewhere else again.
+You remember fixing the webhook bug last Tuesday. Which agent was it in?
+You end up grepping JSONL by hand.
 
-So if you run more than one — and most of us do — you can't answer basic questions:
-
-- *"I remember debugging that webhook thing last Tuesday. Was it in Claude or Codex?"*
-- *"Show me every session I had open in ~/projects/my-app, across all agents."*
-- *"What was that Codex thread about auth tokens — the one I had open alongside the Claude session?"*
-
-**rejoin is the unified view.** It reads all six harnesses' session files locally, auto-titles them into scannable headlines ("HTTP Client Query String Redaction", not `e0a57d18-…`), and gives you one keyboard-first dashboard — web or TUI — to search across them, group by project, pin favorites, and pick back up in tmux.
+**rejoin is the index across all six.** It reads every agent's sessions
+locally, auto-titles them into scannable headlines ("HTTP Client Query
+String Redaction", not `e0a57d18-…`), and gives you one keyboard-first
+dashboard — web or terminal — to search across them, group by project, pin
+favorites, and pick back up in tmux.
 
 ## Try it in 30 seconds
 
