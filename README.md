@@ -50,7 +50,7 @@ A warm-beige browser dashboard borrowed from Claude.ai's visual identity. Scan s
 
 The same dashboard as a first-class TUI. Inside tmux, pressing `Enter` on a row opens a new window in the current session and switches to it — no browser, no attach command, zero friction.
 
-![TUI screenshot](docs/img/tui.svg)
+![TUI demo](docs/img/demo.gif)
 
 ---
 
