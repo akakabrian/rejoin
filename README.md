@@ -14,7 +14,8 @@ Every coding agent ships its own little session picker:
 
 - Claude Code has `claude -r`, but only lists **Claude** sessions.
 - Codex has `codex resume`, but only lists **Codex** sessions.
-- OpenCode and Pi each keep their sessions somewhere else again.
+- Hermes has `hermes --resume`, but only lists **Hermes** sessions.
+- OpenCode, Pi, and OpenClaw each keep their sessions somewhere else again.
 
 So if you run more than one — and most of us do — you can't answer basic questions:
 
@@ -22,7 +23,7 @@ So if you run more than one — and most of us do — you can't answer basic que
 - *"Show me every session I had open in ~/projects/my-app, across all agents."*
 - *"What was that Codex thread about auth tokens — the one I had open alongside the Claude session?"*
 
-**rejoin is the unified view.** It reads all four harnesses' session files locally, auto-titles them into scannable headlines ("HTTP Client Query String Redaction", not `e0a57d18-…`), and gives you one keyboard-first dashboard — web or TUI — to search across them, group by project, pin favorites, and pick back up in tmux.
+**rejoin is the unified view.** It reads all six harnesses' session files locally, auto-titles them into scannable headlines ("HTTP Client Query String Redaction", not `e0a57d18-…`), and gives you one keyboard-first dashboard — web or TUI — to search across them, group by project, pin favorites, and pick back up in tmux.
 
 ## Try it in 30 seconds
 
@@ -67,7 +68,7 @@ The same dashboard as a first-class TUI. Inside tmux, pressing `Enter` on a row 
 
 ## Features
 
-- **Four tools**: Claude Code and Codex (our own parsers — richer detail); OpenCode and Pi via [`agent-sessions`](https://github.com/larsderidder/agent-sessions).
+- **Six tools**: Claude Code, Codex, OpenClaw, and Hermes via our own parsers (Hermes uses the tool's native titles); OpenCode and Pi via [`agent-sessions`](https://github.com/larsderidder/agent-sessions).
 - **Auto titles**: `qwen/qwen3-30b-a3b-instruct-2507` (~$7e-6 per title). Falls back to the first prompt if no key.
 - **Rejoin in tmux**: one click. Detached by default; inside tmux the TUI opens a new window in the current server.
 - **Incremental** reindex every 60 s, skipping unchanged mtimes.
@@ -241,6 +242,8 @@ Click the amber **★** on any row to pin/unpin without opening the session. Cli
 | `~/.codex/sessions/**/*.jsonl` | Codex source (read-only) |
 | `~/.local/share/opencode/opencode.db` | OpenCode source (read-only) |
 | `~/.pi/agent/sessions/**/*.jsonl` | Pi source (read-only) |
+| `~/.openclaw/agents/**/*.jsonl` | OpenClaw source (read-only) |
+| `~/.hermes/state.db` | Hermes source (read-only) |
 
 rejoin **never writes** to session files. It only reads. The SQLite index is a pure cache; deleting it forces a clean reindex on next launch (titles re-generate).
 
@@ -304,7 +307,7 @@ MIT. See [LICENSE](LICENSE).
 <details>
 <summary>Show HN / Reddit launch copy</summary>
 
-**Title**: *Show HN: rejoin — a unified session browser for Claude Code, Codex, OpenCode, and Pi*
+**Title**: *Show HN: rejoin — a unified session browser for Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes*
 
 **Body**:
 
@@ -313,12 +316,13 @@ MIT. See [LICENSE](LICENSE).
 > you can't answer "which of my agents had that webhook debugging thread?"
 > without grepping through JSONL by hand.
 >
-> **rejoin** is the cross-harness view. It reads session files from all four
-> agents locally, auto-titles them with a cheap OpenRouter model, and gives
+> **rejoin** is the cross-harness view. It reads session files from all six
+> agents locally, auto-titles them with a cheap OpenRouter model (or reuses
+> the tool's native titles for Hermes), and gives
 > you one keyboard-first dashboard — web or TUI — to search, filter by
 > project, pin favorites, and rejoin any of them in tmux with one keystroke.
 >
-> - Reads `~/.claude/projects`, `~/.codex/sessions`, OpenCode's SQLite, and Pi.
+> - Reads Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes session stores — JSONL files or SQLite, whichever the agent uses.
 > - FTS5 search across prompts, titles, and Codex compaction summaries —
 >   regardless of which agent generated them.
 > - Group-by-cwd shows every agent you've used in a given project side by side.

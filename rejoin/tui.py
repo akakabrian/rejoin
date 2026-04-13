@@ -232,7 +232,7 @@ def _render_transcript(
 class SessionDashTUI(App):
     CSS_PATH = "tui.tcss"
     TITLE = "rejoin"
-    SUB_TITLE = "claude · codex · opencode · pi"
+    SUB_TITLE = "claude · codex · opencode · pi · openclaw · hermes"
     ENABLE_COMMAND_PALETTE = False
 
     BINDINGS = [

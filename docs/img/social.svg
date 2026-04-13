@@ -37,9 +37,9 @@
 
   <!-- footer lockup -->
   <g transform="translate(130, 540)">
-    <text font-family="ui-monospace, monospace" font-size="22"
-          fill="#8E897F" letter-spacing="2">
-      CLAUDE CODE   ·   CODEX   ·   OPENCODE   ·   PI
+    <text font-family="ui-monospace, monospace" font-size="18"
+          fill="#8E897F" letter-spacing="1.5">
+      CLAUDE CODE · CODEX · OPENCODE · PI · OPENCLAW · HERMES
     </text>
   </g>
 
