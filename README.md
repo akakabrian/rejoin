@@ -301,35 +301,3 @@ rejoin/
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
----
-
-<details>
-<summary>Show HN / Reddit launch copy</summary>
-
-**Title**: *Show HN: rejoin — a unified session browser for Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes*
-
-**Body**:
-
-> Every coding agent ships its own one-harness session picker (`claude -r`,
-> `codex resume`, and so on). If you use more than one — and most of us do —
-> you can't answer "which of my agents had that webhook debugging thread?"
-> without grepping through JSONL by hand.
->
-> **rejoin** is the cross-harness view. It reads session files from all six
-> agents locally, auto-titles them with a cheap OpenRouter model (or reuses
-> the tool's native titles for Hermes), and gives
-> you one keyboard-first dashboard — web or TUI — to search, filter by
-> project, pin favorites, and rejoin any of them in tmux with one keystroke.
->
-> - Reads Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes session stores — JSONL files or SQLite, whichever the agent uses.
-> - FTS5 search across prompts, titles, and Codex compaction summaries —
->   regardless of which agent generated them.
-> - Group-by-cwd shows every agent you've used in a given project side by side.
-> - Pampas-beige web UI borrowed from Claude.ai's aesthetic; matching TUI.
-> - `pipx install rejoin`
->
-> Python 3.11+, MIT. Runs locally — no auth, no cloud, never writes to your
-> session files. https://github.com/akakabrian/rejoin
-
-</details>
