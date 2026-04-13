@@ -186,12 +186,12 @@ def _render_transcript(tool: Tool, path: str, mtime: float) -> list[Text]:
 class SessionDashTUI(App):
     CSS_PATH = "tui.tcss"
     TITLE = "rejoin"
-    SUB_TITLE = "↵ rejoin · p pin · / search · q quit"
+    SUB_TITLE = "claude · codex · opencode · pi"
 
     BINDINGS = [
         Binding("j,down", "cursor_down", "down", show=False),
         Binding("k,up", "cursor_up", "up", show=False),
-        Binding("enter", "rejoin", "rejoin in tmux", key_display="↵"),
+        Binding("enter", "rejoin", "rejoin session", key_display="enter", priority=True),
         Binding("p", "pin", "pin"),
         Binding("slash", "focus_search", "search", key_display="/"),
         Binding("r", "reindex", "reindex"),
