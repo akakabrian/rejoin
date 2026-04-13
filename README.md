@@ -52,7 +52,7 @@ If `tmux` is missing:
 ### 2. Clone
 
 ```bash
-git clone https://github.com/brianakaka7debug/rejoin.git ~/AI/tools/rejoin
+git clone https://github.com/akakabrian/rejoin.git ~/AI/tools/rejoin
 cd ~/AI/tools/rejoin
 ```
 

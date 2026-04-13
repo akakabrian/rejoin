@@ -45,9 +45,9 @@ rejoin = "rejoin.app:main"
 rejoin-tui = "rejoin.tui:main"
 
 [project.urls]
-Homepage = "https://github.com/brianakaka7debug/rejoin"
-Issues = "https://github.com/brianakaka7debug/rejoin/issues"
-Repository = "https://github.com/brianakaka7debug/rejoin"
+Homepage = "https://github.com/akakabrian/rejoin"
+Issues = "https://github.com/akakabrian/rejoin/issues"
+Repository = "https://github.com/akakabrian/rejoin"
 
 [tool.setuptools.packages.find]
 include = ["rejoin*"]
