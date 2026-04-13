@@ -16,11 +16,10 @@ from pathlib import Path
 
 from rich.text import Text
 from textual import on, work
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.reactive import reactive
-from textual.app import SystemCommand
 from textual.screen import Screen
 from textual.theme import Theme
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
