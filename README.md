@@ -10,18 +10,20 @@
 
 ## Why
 
-Your coding agents don't talk to each other. Claude writes JSONL in
-`~/.claude`, Codex in `~/.codex`, Hermes keeps a SQLite DB, OpenClaw nests
-its own tree. Every one of them ships a picker that sees only its own work.
+Using more than one coding agent means your work gets scattered. Claude
+stores sessions in `~/.claude`, Codex in `~/.codex`, Hermes in a SQLite
+DB, OpenClaw in its own nested tree — and each ships a picker that only
+sees its own.
 
-You remember fixing the webhook bug last Tuesday. Which agent was it in?
-You end up grepping JSONL by hand.
+When you want to pick up where you left off, you first have to remember
+*which agent* you were in. "Was that webhook debugging in Claude or Codex?"
+turns into a scavenger hunt across six different session stores.
 
-**rejoin is the index across all six.** It reads every agent's sessions
-locally, auto-titles them into scannable headlines ("HTTP Client Query
-String Redaction", not `e0a57d18-…`), and gives you one keyboard-first
-dashboard — web or terminal — to search across them, group by project, pin
-favorites, and pick back up in tmux.
+**rejoin is the single pane of glass.** One keyboard-first dashboard — web
+or terminal — that auto-titles every session into a scannable headline
+("HTTP Client Query String Redaction", not `e0a57d18-…`), searches across
+all of them at once, groups by project, pins your favorites, and jumps
+back in via tmux with one keystroke.
 
 ## Try it in 30 seconds
 
