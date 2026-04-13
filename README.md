@@ -5,21 +5,21 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml/badge.svg)](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml)
 
-> **One dashboard for every coding agent on your machine.**
-> rejoin gives you one searchable view across Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes — and lets you jump back into any session with one keystroke, no matter which agent you started it in.
+> **One dashboard for every agent harness on your machine.**
+> rejoin gives you one searchable view across Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes — and lets you jump back into any session with one keystroke, no matter which harness you started it in.
 
 ![web dashboard screenshot](docs/img/dashboard.png)
 
 ## Why
 
-Using more than one coding agent means your work gets scattered. Claude
-stores sessions in `~/.claude`, Codex in `~/.codex`, Hermes in a SQLite
-DB, OpenClaw in its own nested tree — and each ships a picker that only
-sees its own.
+Using more than one agent harness means your work gets scattered. Claude
+Code stores sessions in `~/.claude`, Codex in `~/.codex`, Hermes in a
+SQLite DB, OpenClaw in its own nested tree — and each ships a picker that
+only sees its own.
 
 When you want to pick up where you left off, you first have to remember
-*which agent* you were in. "Was that webhook debugging in Claude or Codex?"
-turns into a scavenger hunt across six different session stores.
+*which harness* you were in. "Was that webhook debugging in Claude or
+Codex?" turns into a scavenger hunt across six different session stores.
 
 **rejoin is the single pane of glass.** One keyboard-first dashboard — web
 or terminal — that:
@@ -67,7 +67,7 @@ The same dashboard as a first-class TUI. Inside tmux, `Enter` opens a new window
 
 |  |  |
 | --- | --- |
-| ✅ Indexes **all** your coding agents in one place | ❌ Not tied to any one harness |
+| ✅ Indexes **every** agent harness in one place | ❌ Not tied to any one harness |
 | ✅ **Reads** your local session files | ❌ **Never writes** to them |
 | ✅ Cross-agent search, group-by-cwd, **Pin Thread** | ❌ No cloud sync |
 | ✅ One-keystroke jump-back-in (tmux or any terminal) | ❌ No auth / multi-user |

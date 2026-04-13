@@ -45,9 +45,9 @@ If you add functionality, consider noting a smoke-test step above.
 - The web UI uses HTMX for interactivity; avoid JS frameworks.
 - CSS tokens live at the top of `static/style.css`; the TCSS for the TUI is in `rejoin/tui.tcss`.
 
-## Adding a new CLI
+## Adding a new harness
 
-To index sessions from another coding-agent CLI:
+To index sessions from another agent harness:
 
 1. Write `parse_X_session(path) -> SessionRecord | None` in `indexer.py`; add to `PARSERS`.
 2. Write `iter_X_turns(path) -> Iterator[Turn]` in `transcript.py`; add to `_ITERATORS`.
