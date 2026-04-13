@@ -24,12 +24,16 @@ Requires Python 3.11+ (uses `tomllib`), `tmux`, and Claude Code / Codex CLIs on 
 git clone <repo-url> ~/AI/tools/session-dash
 cd ~/AI/tools/session-dash
 python3 -m venv .venv
-.venv/bin/pip install fastapi uvicorn jinja2 httpx python-dotenv
+.venv/bin/pip install -r requirements.txt
 ```
 
 The titler needs an OpenRouter API key. Set `OPENROUTER_API_KEY` in your environment, or drop it in a `.env` that `python-dotenv` can find. (The bundled `config.py` also falls back to reading the key from `~/AI/projects/Paa Prefab CRM/.env` — delete that branch if it's not useful to you.)
 
 ## Run
+
+Two front-ends share the same SQLite index; run either or both.
+
+**Web** (FastAPI + HTMX):
 
 ```bash
 ./run.sh
@@ -42,6 +46,14 @@ SESSION_DASH_HOST=127.0.0.1 SESSION_DASH_PORT=9000 ./run.sh
 ```
 
 Open `http://127.0.0.1:8767/` (or launch a Chrome app window with `google-chrome --app=http://127.0.0.1:8767/ --user-data-dir=/tmp/chrome-session-dash`).
+
+**Terminal** (Textual TUI, tmux-aware):
+
+```bash
+./run-tui.sh
+```
+
+If launched inside tmux, pressing `Enter` on a row opens a new tmux window in the current session and switches to it. Outside tmux, it starts a detached session and prints the attach command in the status bar. Pins, titles, active indicator, FTS search, and the 30-second refresh interval all carry over from the web version.
 
 ## Shortcuts
 
