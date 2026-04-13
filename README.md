@@ -4,19 +4,24 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-copper.svg)](CHANGELOG.md)
 
-> **You closed your terminal. Which Claude Code session had that auth bug?**
-> rejoin is a local dashboard + TUI for browsing, searching, and tmux-resuming every coding-agent session on your machine.
+> **One dashboard for every coding agent you use.**
+> rejoin indexes Claude Code, Codex, OpenCode, and Pi sessions into a single searchable view — web or terminal — and lets you tmux-resume any of them with one keystroke.
 
 ## Why
 
-If you run Claude Code, Codex, or OpenCode daily, you pile up dozens of sessions
-in `~/.claude/projects/` and `~/.codex/sessions/` — opaque UUIDs, no way to find
-"the one where I fixed the webhook bug last Tuesday."
+Every coding agent ships its own little session picker:
 
-rejoin indexes every session file locally, auto-titles them into scannable
-headlines ("HTTP Client Query String Redaction", not `e0a57d18-…`), and gives
-you a two-pane dashboard — web or terminal — to search, pin, and pick back up
-in tmux.
+- Claude Code has `claude -r`, but only lists **Claude** sessions.
+- Codex has `codex resume`, but only lists **Codex** sessions.
+- OpenCode and Pi each keep their sessions somewhere else again.
+
+So if you run more than one — and most of us do — you can't answer basic questions:
+
+- *"I remember debugging that webhook thing last Tuesday. Was it in Claude or Codex?"*
+- *"Show me every session I had open in ~/projects/my-app, across all agents."*
+- *"What was that Codex thread about auth tokens — the one I had open alongside the Claude session?"*
+
+**rejoin is the unified view.** It reads all four harnesses' session files locally, auto-titles them into scannable headlines ("HTTP Client Query String Redaction", not `e0a57d18-…`), and gives you one keyboard-first dashboard — web or TUI — to search across them, group by project, pin favorites, and pick back up in tmux.
 
 ## Try it in 30 seconds
 
@@ -50,10 +55,11 @@ The same dashboard as a first-class TUI. Inside tmux, pressing `Enter` on a row 
 
 |  |  |
 | --- | --- |
+| ✅ Indexes **all** your coding agents in one place | ❌ Not tied to any one harness |
 | ✅ **Reads** your local session files | ❌ **Never writes** to them |
-| ✅ Indexes, titles, searches, groups | ❌ No cloud sync |
+| ✅ Cross-agent search, group-by-cwd, pinning | ❌ No cloud sync |
 | ✅ One-click tmux rejoin | ❌ No auth / multi-user |
-| ✅ Web + terminal UIs | ❌ Not a CLI replacement |
+| ✅ Web + terminal UIs | ❌ Not a CLI replacement for `claude -r` — *a superset* |
 | ✅ MIT, pure Python, small deps | ❌ Not a framework |
 
 ## Features
@@ -295,22 +301,28 @@ MIT. See [LICENSE](LICENSE).
 <details>
 <summary>Show HN / Reddit launch copy</summary>
 
-**Title**: *Show HN: rejoin — a local dashboard to browse and tmux-resume your Claude Code / Codex sessions*
+**Title**: *Show HN: rejoin — a unified session browser for Claude Code, Codex, OpenCode, and Pi*
 
 **Body**:
 
-> I run a lot of Claude Code and Codex sessions, and kept losing track of which
-> UUID-named `.jsonl` was the thread I wanted to pick up. So I built **rejoin**:
-> a local web dashboard + Textual TUI that indexes every session file on your
-> machine, auto-titles them with a cheap OpenRouter model, and lets you search,
-> pin, and rejoin in tmux with one keystroke.
+> Every coding agent ships its own one-harness session picker (`claude -r`,
+> `codex resume`, and so on). If you use more than one — and most of us do —
+> you can't answer "which of my agents had that webhook debugging thread?"
+> without grepping through JSONL by hand.
+>
+> **rejoin** is the cross-harness view. It reads session files from all four
+> agents locally, auto-titles them with a cheap OpenRouter model, and gives
+> you one keyboard-first dashboard — web or TUI — to search, filter by
+> project, pin favorites, and rejoin any of them in tmux with one keystroke.
 >
 > - Reads `~/.claude/projects`, `~/.codex/sessions`, OpenCode's SQLite, and Pi.
-> - FTS5 search over prompts, titles, and Codex compaction summaries.
+> - FTS5 search across prompts, titles, and Codex compaction summaries —
+>   regardless of which agent generated them.
+> - Group-by-cwd shows every agent you've used in a given project side by side.
 > - Pampas-beige web UI borrowed from Claude.ai's aesthetic; matching TUI.
 > - `pipx install git+https://github.com/akakabrian/rejoin.git`
 >
-> Python 3.11+, MIT. Loops locally — no auth, no cloud, never writes to your
+> Python 3.11+, MIT. Runs locally — no auth, no cloud, never writes to your
 > session files. https://github.com/akakabrian/rejoin
 
 </details>
