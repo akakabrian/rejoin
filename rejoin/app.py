@@ -50,12 +50,24 @@ def _is_active(last_activity: str | None, now_epoch: float,
     return bool(ts) and (now_epoch - ts) < ACTIVE_WINDOW_SEC
 
 
+_RUNNING_CACHE_TTL = 5.0
+_running_cache: tuple[float, set[str]] = (0.0, set())
+
+
 def _running_ids() -> set[str]:
+    """`ps aux` scan is ~10-50ms; cache for a few seconds to keep list
+    fetches and detail clicks snappy."""
+    global _running_cache
+    now = datetime.now(UTC).timestamp()
+    if now - _running_cache[0] < _RUNNING_CACHE_TTL:
+        return _running_cache[1]
     try:
         from .external import running_session_ids
-        return running_session_ids()
+        ids = running_session_ids()
     except Exception:
-        return set()
+        ids = set()
+    _running_cache = (now, ids)
+    return ids
 
 
 def _highlight(text: str | None, q: str | None) -> Markup:

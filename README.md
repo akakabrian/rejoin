@@ -1,8 +1,19 @@
 # rejoin
 
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.0-copper.svg)](CHANGELOG.md)
+
 A local dashboard for browsing and rejoining AI coding-agent sessions (Claude Code, Codex, OpenCode, Pi).
 
 ![dashboard screenshot](docs/img/dashboard.png)
+
+<details>
+<summary>Terminal UI</summary>
+
+![TUI screenshot](docs/img/tui.svg)
+
+</details>
 
 Indexes session files from four agents into SQLite, auto-titles each session via a cheap OpenRouter model, and lets you rejoin any session in `tmux` — from either a web UI (FastAPI + HTMX, warm beige aesthetic inspired by Claude.ai) or a terminal UI (Textual, tmux-aware).
 
@@ -41,11 +52,11 @@ If `tmux` is missing:
 ### 2. Clone
 
 ```bash
-git clone https://github.com/<owner>/rejoin.git ~/AI/tools/rejoin
+git clone https://github.com/brianakaka7debug/rejoin.git ~/AI/tools/rejoin
 cd ~/AI/tools/rejoin
 ```
 
-Replace `<owner>` with the actual GitHub owner. The target path is arbitrary; `~/AI/tools/rejoin` is an example.
+The target path is arbitrary; `~/AI/tools/rejoin` is an example.
 
 ### 3. Virtual env + install
 

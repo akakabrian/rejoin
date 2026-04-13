@@ -60,6 +60,23 @@ _TOOL_COLORS: dict[str, str] = {
 
 # ---------- data access ----------
 
+_RUNNING_CACHE_TTL = 5.0
+_running_cache: tuple[float, set[str]] = (0.0, set())
+
+
+def _running_ids_cached() -> set[str]:
+    global _running_cache
+    now = datetime.now(UTC).timestamp()
+    if now - _running_cache[0] < _RUNNING_CACHE_TTL:
+        return _running_cache[1]
+    try:
+        from .external import running_session_ids
+        ids = running_session_ids()
+    except Exception:
+        ids = set()
+    _running_cache = (now, ids)
+    return ids
+
 
 def _fetch_sessions(q: str | None = None, limit: int = 500) -> list[dict]:
     sql = """
@@ -80,11 +97,7 @@ def _fetch_sessions(q: str | None = None, limit: int = 500) -> list[dict]:
         LIMIT :limit
     """
     now = datetime.now(UTC).timestamp()
-    try:
-        from .external import running_session_ids
-        running = running_session_ids()
-    except Exception:
-        running = set()
+    running = _running_ids_cached()
     with connect() as conn:
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
     for r in rows:
@@ -125,6 +138,9 @@ def _cached_turns(tool: Tool, path_str: str, mtime: float):
 
 def _rejoin(tool: Tool, session_id: str, cwd: str | None) -> str:
     """Launch/attach/select the tmux session and return a status line."""
+    import shutil
+    if shutil.which("tmux") is None:
+        return "tmux not found on PATH — install tmux to rejoin"
     cmd = resume_command(tool, session_id, cwd)
     name = tmux_session_name(tool, session_id)
 
@@ -158,7 +174,14 @@ def _rejoin(tool: Tool, session_id: str, cwd: str | None) -> str:
 # ---------- transcript rendering ----------
 
 
-def _render_transcript(tool: Tool, path: str, mtime: float) -> list[Text]:
+def _render_transcript(
+    tool: Tool,
+    path: str,
+    mtime: float,
+    user_color: str = "#C15F3C",
+    assistant_color: str = "#EDE6D9",
+    muted_color: str = "#8E897F",
+) -> list[Text]:
     turns = _cached_turns(tool, path, mtime)
     total = len(turns)
     tail = turns[-TRANSCRIPT_TAIL:] if total > TRANSCRIPT_TAIL else turns
@@ -167,7 +190,7 @@ def _render_transcript(tool: Tool, path: str, mtime: float) -> list[Text]:
     out: list[Text] = []
     if hidden:
         out.append(Text(f"— {hidden} earlier turns hidden ({total} total) —",
-                        style="#968a77 italic"))
+                        style=f"{muted_color} italic"))
         out.append(Text(""))
 
     buf: list = []
@@ -180,7 +203,7 @@ def _render_transcript(tool: Tool, path: str, mtime: float) -> list[Text]:
         names = list(dict.fromkeys(names))  # dedupe preserving order
         names_s = ", ".join(names) if names else "—"
         out.append(Text(f"  ····· tools ({len(buf)})  {names_s}",
-                        style="#8E897F"))
+                        style=muted_color))
         buf.clear()
 
     for t in tail:
@@ -191,12 +214,11 @@ def _render_transcript(tool: Tool, path: str, mtime: float) -> list[Text]:
         if t.role == "user":
             if last_role != "user":
                 out.append(Text(""))
-            body = Text(t.text, style="#C15F3C bold")
-            out.append(body)
+            out.append(Text(t.text, style=f"{user_color} bold"))
         elif t.role == "assistant":
             if last_role != "assistant":
                 out.append(Text(""))
-            out.append(Text(t.text, style="#EDE6D9"))
+            out.append(Text(t.text, style=assistant_color))
         last_role = t.role
     flush_tools()
     return out
@@ -392,23 +414,30 @@ class SessionDashTUI(App):
     def render_transcript_for(self, row: dict | None) -> None:
         log = self.query_one("#transcript", RichLog)
         log.clear()
+        theme = self.current_theme
+        primary = theme.primary or "#C15F3C"
+        fg = theme.foreground or "#EDE6D9"
+        muted = theme.variables.get("cloudy-dim", "#8E897F") if theme.variables else "#8E897F"
         if not row:
-            log.write(Text("select a session ←", style="#968a77 italic"))
+            log.write(Text("select a session ←", style=f"{muted} italic"))
             return
         title = row["ai_title"] or (row["first_prompt"] or "(untitled)")[:80]
         header = Text()
-        header.append(f"{title}\n", style="bold #EDE6D9")
+        header.append(f"{title}\n", style=f"bold {fg}")
         header.append(f"{row['tool']}",
-                      style=_TOOL_COLORS.get(row["tool"], "#EDE6D9"))
-        header.append(" · ", style="#8E897F")
-        header.append(f"{row.get('model') or '?'}", style="#8E897F")
-        header.append(" · ", style="#8E897F")
-        header.append(short_cwd(row.get("cwd")), style="#8E897F")
+                      style=_TOOL_COLORS.get(row["tool"], fg))
+        header.append(" · ", style=muted)
+        header.append(f"{row.get('model') or '?'}", style=muted)
+        header.append(" · ", style=muted)
+        header.append(short_cwd(row.get("cwd")), style=muted)
         log.write(header)
         log.write("")
         try:
             for part in _render_transcript(row["tool"], row["path"],
-                                           row["mtime"] or 0.0):
+                                           row["mtime"] or 0.0,
+                                           user_color=primary,
+                                           assistant_color=fg,
+                                           muted_color=muted):
                 log.write(part)
         except Exception as e:
             log.write(Text(f"[error loading: {e}]", style="red"))
@@ -428,6 +457,10 @@ class SessionDashTUI(App):
 
     def _current_session_id(self) -> str | None:
         return self.selected_id
+
+    def watch_theme(self, old: str | None, new: str | None) -> None:
+        # re-render transcript so its inline styles pick up the new theme
+        self.render_transcript()
 
     def watch_status(self, value: str) -> None:
         try:
