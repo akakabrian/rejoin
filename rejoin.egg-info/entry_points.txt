@@ -1,3 +1,0 @@
-[console_scripts]
-rejoin = rejoin.app:main
-rejoin-tui = rejoin.tui:main
