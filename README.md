@@ -5,8 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml/badge.svg)](https://github.com/akakabrian/rejoin/actions/workflows/ci.yml)
 
-> **One dashboard for every agent harness on your machine.**
-> rejoin gives you one searchable view across Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes — and lets you jump back into any session with one keystroke, no matter which harness you started it in.
+> **rejoin**
+>  lets you jump back into any session of Claude Code, Codex, OpenCode, Pi, OpenClaw, and Hermes — and gives you one dashboard of ALL your agentic sessions.
 
 ![web dashboard screenshot](docs/img/dashboard.png)
 
