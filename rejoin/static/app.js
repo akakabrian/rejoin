@@ -169,8 +169,12 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); moveSelection(-1); }
   else if (e.key === "Enter") { e.preventDefault(); resumeSelected(); }
   else if (e.key === "p") {
-    const pin = document.querySelector(".pin-btn[data-session-id]");
-    if (pin) { e.preventDefault(); togglePin(pin.dataset.sessionId, pin); }
+    const sid = selectedSessionId || document.querySelector(".session-row.selected")?.dataset.sessionId;
+    if (!sid) return;
+    const pin = document.querySelector(`#detail-pane .pin-btn[data-session-id="${sid}"]`)
+      || document.querySelector(`.session-row[data-session-id="${sid}"] .pin-btn[data-session-id="${sid}"]`);
+    e.preventDefault();
+    togglePin(sid, pin);
   }
   else if (e.key === "g") {
     const rows = allRows();
