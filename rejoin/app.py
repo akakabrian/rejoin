@@ -292,6 +292,9 @@ def session_detail(
 
 @app.post("/session/{session_id}/pin")
 def session_pin(session_id: str) -> JSONResponse:
+    row = _get_session(session_id)
+    if not row:
+        return JSONResponse({"error": "not found"}, status_code=404)
     now = utcnow_iso()
     with connect() as conn:
         existing = conn.execute(
