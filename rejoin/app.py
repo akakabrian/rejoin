@@ -356,7 +356,9 @@ def api_status() -> JSONResponse:
 
 def main() -> None:
     """Entrypoint for `rejoin` console script. Runs uvicorn with config values."""
+    import errno
     import os
+    import sys
 
     import uvicorn
 
@@ -364,4 +366,14 @@ def main() -> None:
 
     host = os.environ.get("REJOIN_HOST") or HOST
     port = int(os.environ.get("REJOIN_PORT") or PORT)
-    uvicorn.run("rejoin.app:app", host=host, port=port)
+    try:
+        uvicorn.run("rejoin.app:app", host=host, port=port)
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE or "Address already in use" in str(e):
+            print(f"port {port} in use — set REJOIN_PORT or adjust config", file=sys.stderr)
+            raise SystemExit(1)
+        raise
+
+
+if __name__ == "__main__":
+    main()

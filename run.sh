@@ -5,8 +5,4 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-read -r HOST PORT <<<"$(.venv/bin/python -c 'from rejoin.config import HOST, PORT; print(HOST, PORT)')"
-HOST="${REJOIN_HOST:-$HOST}"
-PORT="${REJOIN_PORT:-$PORT}"
-
-exec .venv/bin/uvicorn rejoin.app:app --host "$HOST" --port "$PORT" "$@"
+exec .venv/bin/python -m rejoin.app "$@"
