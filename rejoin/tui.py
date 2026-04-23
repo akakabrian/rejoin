@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import sqlite3
 import subprocess
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -101,7 +102,12 @@ def _fetch_sessions(q: str | None = None, limit: int = 500) -> list[dict]:
     now = datetime.now(UTC).timestamp()
     running = _running_ids_cached()
     with connect() as conn:
-        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+        try:
+            rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+        except sqlite3.OperationalError:
+            if q:
+                return []
+            raise
     for r in rows:
         ts = iso_to_epoch(r.get("last_activity"))
         r["active"] = (

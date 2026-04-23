@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import sqlite3
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -34,6 +35,10 @@ TEMPLATES = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
 log = logging.getLogger("rejoin")
 
 _LAST_INDEXED_AT: float | None = None
+
+
+class SearchQuerySyntaxError(Exception):
+    """User-supplied FTS5 query had invalid syntax."""
 
 
 def _mark_indexed() -> None:
@@ -168,7 +173,12 @@ def _fetch_sessions(
     now_epoch = datetime.now(UTC).timestamp()
     running = _running_ids()
     with connect() as conn:
-        rows = conn.execute(sql, params).fetchall()
+        try:
+            rows = conn.execute(sql, params).fetchall()
+        except sqlite3.OperationalError:
+            if q:
+                raise SearchQuerySyntaxError from None
+            raise
     out: list[dict] = []
     for r in rows:
         d = dict(r)
@@ -240,8 +250,11 @@ def sessions_fragment(
     cwd: str | None = Query(None),
     q: str | None = Query(None),
     group: bool = Query(False),
-) -> HTMLResponse:
-    sessions = _fetch_sessions(tool or None, cwd or None, q or None)
+) -> HTMLResponse | JSONResponse:
+    try:
+        sessions = _fetch_sessions(tool or None, cwd or None, q or None)
+    except SearchQuerySyntaxError:
+        return JSONResponse({"matches": [], "error": "query syntax"})
     groups = _group_by_cwd(sessions) if group else []
     return TEMPLATES.TemplateResponse(
         request, "_sessions.html",
