@@ -87,5 +87,18 @@ def openrouter_api_key() -> str | None:
     return None
 
 
+def get_codexia_base_url() -> str | None:
+    """Return the base URL of a Codexia web instance to deep-link into,
+    or None if not configured. Checks $REJOIN_CODEXIA_URL first, then
+    REJOIN_CODEXIA_URL in the project .env."""
+    base = os.environ.get("REJOIN_CODEXIA_URL")
+    if not base and PROJECT_ENV_PATH.exists():
+        base = dotenv_values(PROJECT_ENV_PATH).get("REJOIN_CODEXIA_URL")
+    if not base:
+        return None
+    base = base.strip().rstrip("/")
+    return base or None
+
+
 def ensure_data_dir() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)

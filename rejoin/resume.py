@@ -3,6 +3,9 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
+from urllib.parse import quote
+
+from .config import get_codexia_base_url
 
 
 class MissingBinary(RuntimeError):
@@ -43,6 +46,25 @@ def resume_command(tool: str, session_id: str, cwd: str | None) -> str:
     else:
         raise ValueError(f"unknown tool: {tool}")
     return f"cd {cd_target} && {inner}"
+
+
+def codexia_url(tool: str, session_id: str, cwd: str | None) -> str | None:
+    """Return a Codexia deep-link URL for this session, or None if Codexia
+    isn't configured or the harness isn't supported (only claude → cc and
+    codex → codex are wired up on the Codexia side)."""
+    base = get_codexia_base_url()
+    if not base:
+        return None
+    if tool == "claude":
+        agent, id_param = "cc", "session"
+    elif tool == "codex":
+        agent, id_param = "codex", "thread"
+    else:
+        return None
+    parts = [f"agent={agent}", f"{id_param}={quote(session_id, safe='')}"]
+    if cwd:
+        parts.append(f"cwd={quote(cwd, safe='')}")
+    return f"{base}/?{'&'.join(parts)}"
 
 
 def tmux_session_name(tool: str, session_id: str) -> str:

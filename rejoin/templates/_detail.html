@@ -17,6 +17,9 @@
     </div>
     <div class="actions">
       <button id="resume-btn" data-url="/session/{{ s.id }}/resume">rejoin in tmux</button>
+      {% if codexia_url %}
+      <a class="btn-link secondary" href="{{ codexia_url }}" target="_blank" rel="noopener">open in codexia</a>
+      {% endif %}
       <button class="secondary" onclick="copyText({{ resume_cmd|tojson }}, this)">copy command</button>
     </div>
   </header>

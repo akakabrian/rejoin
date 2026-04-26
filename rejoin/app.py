@@ -26,7 +26,7 @@ from .config import (
 )
 from .db import connect, init_db
 from .indexer import reindex
-from .resume import MissingBinary, launch_tmux, resume_command
+from .resume import MissingBinary, codexia_url, launch_tmux, resume_command
 from .titler import backfill_titles
 from .transcript import load_turns
 
@@ -243,7 +243,7 @@ def index(request: Request) -> HTMLResponse:
     )
 
 
-@app.get("/sessions", response_class=HTMLResponse)
+@app.get("/sessions", response_class=HTMLResponse, response_model=None)
 def sessions_fragment(
     request: Request,
     tool: str | None = Query(None),
@@ -295,9 +295,11 @@ def session_detail(
         blocks.append({"kind": "tools", "turns": buf})
 
     cmd = resume_command(row["tool"], row["id"], row["cwd"])
+    cx_url = codexia_url(row["tool"], row["id"], row["cwd"])
     return TEMPLATES.TemplateResponse(
         request, "_detail.html",
         {"s": row, "blocks": blocks, "resume_cmd": cmd,
+         "codexia_url": cx_url,
          "hidden": hidden, "total": total,
          "long_lines": LONG_TURN_LINES, "long_chars": LONG_TURN_CHARS},
     )
