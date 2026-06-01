@@ -55,6 +55,68 @@ CREATE VIRTUAL TABLE IF NOT EXISTS session_fts USING fts5(
     title,
     tokenize='porter unicode61'
 );
+
+CREATE TABLE IF NOT EXISTS session_file_ref_events (
+    id INTEGER PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    cwd TEXT,
+    turn_index INTEGER,
+    event_index INTEGER,
+    source_kind TEXT NOT NULL,
+    path_raw TEXT NOT NULL,
+    path_normalized TEXT NOT NULL,
+    path_display TEXT NOT NULL,
+    path_scope TEXT NOT NULL DEFAULT 'unknown',
+    basename TEXT,
+    extension TEXT,
+    operation TEXT NOT NULL DEFAULT 'mentioned',
+    confidence REAL NOT NULL DEFAULT 0.5,
+    line_start INTEGER,
+    line_end INTEGER,
+    command TEXT,
+    excerpt TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_ref_events_session
+    ON session_file_ref_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_file_ref_events_path
+    ON session_file_ref_events(path_normalized);
+CREATE INDEX IF NOT EXISTS idx_file_ref_events_provider
+    ON session_file_ref_events(provider);
+
+CREATE TABLE IF NOT EXISTS session_file_refs (
+    session_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    cwd TEXT,
+    path_normalized TEXT NOT NULL,
+    path_display TEXT NOT NULL,
+    path_scope TEXT NOT NULL DEFAULT 'unknown',
+    basename TEXT,
+    extension TEXT,
+    operations_json TEXT NOT NULL DEFAULT '[]',
+    operation_summary TEXT,
+    mention_count INTEGER NOT NULL DEFAULT 0,
+    first_turn_index INTEGER,
+    last_turn_index INTEGER,
+    max_confidence REAL NOT NULL DEFAULT 0.0,
+    exists_now INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (session_id, path_normalized),
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_refs_path
+    ON session_file_refs(path_normalized);
+CREATE INDEX IF NOT EXISTS idx_file_refs_basename
+    ON session_file_refs(basename);
+CREATE INDEX IF NOT EXISTS idx_file_refs_extension
+    ON session_file_refs(extension);
+CREATE INDEX IF NOT EXISTS idx_file_refs_cwd
+    ON session_file_refs(cwd);
 """
 
 
@@ -63,6 +125,8 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 

@@ -200,6 +200,17 @@ main {
   margin-top: 3px;
   color: var(--cloudy-dim);
 }
+.file-count {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--cloudy-dim);
+  background: rgba(250, 248, 242, 0.6);
+}
 .cwd {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -319,6 +330,77 @@ main {
   line-height: 1.6;
   white-space: pre-wrap;
   color: var(--ink-soft);
+}
+
+/* ---------- file refs ---------- */
+.files-panel {
+  max-width: 70ch;
+  margin: 16px 0 24px;
+  padding: 12px 0 14px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.files-panel-title {
+  margin-bottom: 8px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--cloudy-dim);
+  font-weight: 500;
+}
+.file-ref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.file-ref {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: transparent;
+  text-align: left;
+}
+.file-ref:hover {
+  border-color: var(--border);
+  background: var(--pampas-hi);
+}
+.file-ref-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--crail-soft);
+  color: var(--crail);
+}
+.file-ref-icon-tested { background: rgba(16, 163, 127, 0.12); color: #0E7D5F; }
+.file-ref-icon-read,
+.file-ref-icon-searched { background: rgba(52, 110, 177, 0.12); color: #2E5D8E; }
+.file-ref-icon-err { background: rgba(180, 45, 30, 0.14); color: #9F2F20; }
+.file-ref-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+.file-ref-summary {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--cloudy-dim);
+  white-space: nowrap;
 }
 
 /* ---------- transcript ---------- */

@@ -8,6 +8,8 @@ from pathlib import Path
 from .common import Tool, iter_jsonl, text_of, utcnow_iso, uuid_from_stem
 from .config import CLAUDE_PROJECTS_ROOT, CODEX_SESSIONS_ROOT, OPENCLAW_AGENTS_ROOT
 from .db import connect, init_db, refresh_fts, transaction
+from .file_refs import extract_file_ref_events, replace_session_file_refs
+from .transcript import load_turns
 
 
 @dataclass
@@ -204,6 +206,12 @@ def upsert(conn, rec: SessionRecord) -> None:
     conn.execute(_UPSERT_SQL, rec.to_row())
 
 
+def _replace_file_refs_for_record(conn, rec: SessionRecord) -> None:
+    turns = load_turns(rec.tool, Path(rec.path))
+    events = extract_file_ref_events(rec.id, rec.tool, rec.cwd, turns)
+    replace_session_file_refs(conn, rec.id, events)
+
+
 def reindex(force: bool = False) -> dict:
     init_db()
     stats = {"errors": 0}
@@ -232,6 +240,7 @@ def reindex(force: bool = False) -> dict:
                         if rec is None:
                             continue
                         upsert(conn, rec)
+                        _replace_file_refs_for_record(conn, rec)
                         stats[f"{tool}_updated" if prior else f"{tool}_new"] += 1
                         changed += 1
                     except Exception:
@@ -255,6 +264,7 @@ def reindex(force: bool = False) -> dict:
                         if prior and not force and abs(prior[1] - rec.mtime) < 1e-6:
                             continue
                         upsert(conn, rec)
+                        _replace_file_refs_for_record(conn, rec)
                         stats[f"{tool}_updated" if prior else f"{tool}_new"] += 1
                         changed += 1
                 except Exception:
@@ -273,6 +283,7 @@ def reindex(force: bool = False) -> dict:
                                            if k != "indexed_at"})
                     prior = existing.get(rec.path)
                     upsert(conn, rec)
+                    _replace_file_refs_for_record(conn, rec)
                     stats["hermes_updated" if prior else "hermes_new"] += 1
                     changed += 1
                     if native_title:

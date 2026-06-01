@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import sqlite3
@@ -25,6 +26,7 @@ from .config import (
     TURN_CACHE_SIZE,
 )
 from .db import connect, init_db
+from .file_refs import file_ref_icon
 from .indexer import reindex
 from .resume import MissingBinary, codexia_url, launch_tmux, resume_command
 from .titler import backfill_titles
@@ -44,6 +46,14 @@ class SearchQuerySyntaxError(Exception):
 def _mark_indexed() -> None:
     global _LAST_INDEXED_AT
     _LAST_INDEXED_AT = datetime.now(UTC).timestamp()
+
+
+def _changed_count(stats: dict) -> int:
+    return sum(
+        value
+        for key, value in stats.items()
+        if isinstance(value, int) and (key.endswith("_new") or key.endswith("_updated"))
+    )
 
 
 def _is_active(last_activity: str | None, now_epoch: float,
@@ -109,8 +119,7 @@ async def _refresh_loop() -> None:
         try:
             stats = await asyncio.to_thread(reindex, False)
             _mark_indexed()
-            changed = (stats["claude_new"] + stats["claude_updated"]
-                       + stats["codex_new"] + stats["codex_updated"])
+            changed = _changed_count(stats)
             if changed:
                 log.info("refresh: %s", stats)
                 await backfill_titles()
@@ -137,6 +146,10 @@ def _fetch_sessions(
     tool: str | None,
     cwd: str | None,
     q: str | None,
+    file: str | None = None,
+    basename: str | None = None,
+    ext: str | None = None,
+    operation: str | None = None,
     limit: int = 200,
 ) -> list[dict]:
     where: list[str] = []
@@ -147,15 +160,36 @@ def _fetch_sessions(
     if cwd:
         where.append("s.cwd = :cwd")
         params["cwd"] = cwd
+    if file:
+        where.append("fr.path_normalized = :file")
+        params["file"] = file
+    if basename:
+        where.append("fr.basename = :basename")
+        params["basename"] = basename
+    if ext:
+        ext = ext if ext.startswith(".") else f".{ext}"
+        where.append("fr.extension = :ext")
+        params["ext"] = ext
+    if operation:
+        where.append("fr.operations_json LIKE :operation")
+        params["operation"] = f'%"{operation}"%'
 
     sql = """
         SELECT s.*, t.title as ai_title,
                p.pinned_at IS NOT NULL as pinned,
-               p.pinned_at as pinned_at
+               p.pinned_at as pinned_at,
+               COALESCE(fc.file_count, 0) as file_count
         FROM sessions s
         LEFT JOIN titles t ON t.session_id = s.id
         LEFT JOIN pins p ON p.session_id = s.id
+        LEFT JOIN (
+            SELECT session_id, COUNT(*) as file_count
+            FROM session_file_refs
+            GROUP BY session_id
+        ) fc ON fc.session_id = s.id
     """
+    if file or basename or ext or operation:
+        sql += " JOIN session_file_refs fr ON fr.session_id = s.id"
     if q:
         sql += " JOIN session_fts f ON f.session_id = s.id WHERE session_fts MATCH :q"
         params["q"] = q
@@ -214,6 +248,40 @@ def _get_session(session_id: str) -> dict | None:
     return d
 
 
+def _get_session_file_refs(session_id: str, limit: int = 20) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM session_file_refs
+            WHERE session_id = :id
+            ORDER BY max_confidence DESC, mention_count DESC, path_display
+            LIMIT :limit
+            """,
+            {"id": session_id, "limit": limit},
+        ).fetchall()
+    refs: list[dict] = []
+    for row in rows:
+        d = dict(row)
+        try:
+            operations = json.loads(d.get("operations_json") or "[]")
+        except json.JSONDecodeError:
+            operations = []
+        d["operations"] = operations
+        d["icon"] = file_ref_icon(operations)
+        d["icon_class"] = {
+            "!": "err",
+            "E": "edited",
+            "C": "created",
+            "T": "tested",
+            "R": "read",
+            "S": "searched",
+            "M": "mentioned",
+        }.get(d["icon"], "mentioned")
+        refs.append(d)
+    return refs
+
+
 def _group_by_cwd(sessions: list[dict]) -> list[dict]:
     pinned = [s for s in sessions if s.get("pinned")]
     others = [s for s in sessions if not s.get("pinned")]
@@ -249,10 +317,22 @@ def sessions_fragment(
     tool: str | None = Query(None),
     cwd: str | None = Query(None),
     q: str | None = Query(None),
+    file: str | None = Query(None),
+    basename: str | None = Query(None),
+    ext: str | None = Query(None),
+    operation: str | None = Query(None),
     group: bool = Query(False),
 ) -> HTMLResponse | JSONResponse:
     try:
-        sessions = _fetch_sessions(tool or None, cwd or None, q or None)
+        sessions = _fetch_sessions(
+            tool or None,
+            cwd or None,
+            q or None,
+            file or None,
+            basename or None,
+            ext or None,
+            operation or None,
+        )
     except SearchQuerySyntaxError:
         return JSONResponse({"matches": [], "error": "query syntax"})
     groups = _group_by_cwd(sessions) if group else []
@@ -296,12 +376,14 @@ def session_detail(
 
     cmd = resume_command(row["tool"], row["id"], row["cwd"])
     cx_url = codexia_url(row["tool"], row["id"], row["cwd"])
+    file_refs = _get_session_file_refs(session_id, 20)
     return TEMPLATES.TemplateResponse(
         request, "_detail.html",
         {"s": row, "blocks": blocks, "resume_cmd": cmd,
          "codexia_url": cx_url,
          "hidden": hidden, "total": total,
-         "long_lines": LONG_TURN_LINES, "long_chars": LONG_TURN_CHARS},
+         "long_lines": LONG_TURN_LINES, "long_chars": LONG_TURN_CHARS,
+         "file_refs": file_refs},
     )
 
 
@@ -348,6 +430,100 @@ async def api_reindex(titles: bool = Query(True)) -> JSONResponse:
     return JSONResponse(stats)
 
 
+@app.get("/api/sessions/{session_id}/files")
+def api_session_files(session_id: str) -> JSONResponse:
+    if not _get_session(session_id):
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    files = [
+        {
+            "path": ref["path_display"],
+            "path_normalized": ref["path_normalized"],
+            "path_scope": ref["path_scope"],
+            "basename": ref["basename"],
+            "extension": ref["extension"],
+            "operations": ref["operations"],
+            "operation_summary": ref["operation_summary"],
+            "mention_count": ref["mention_count"],
+            "first_turn_index": ref["first_turn_index"],
+            "last_turn_index": ref["last_turn_index"],
+            "exists_now": bool(ref["exists_now"]) if ref["exists_now"] is not None else None,
+            "confidence": ref["max_confidence"],
+        }
+        for ref in _get_session_file_refs(session_id, 200)
+    ]
+    return JSONResponse({"ok": True, "session_id": session_id, "files": files})
+
+
+@app.get("/api/files/search")
+def api_files_search(
+    q: str | None = Query(None),
+    basename: str | None = Query(None),
+    ext: str | None = Query(None),
+    cwd: str | None = Query(None),
+    tool: str | None = Query(None),
+    operation: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> JSONResponse:
+    where: list[str] = []
+    params: dict = {"limit": limit, "offset": offset}
+    if q:
+        where.append("(fr.path_normalized LIKE :q OR fr.path_display LIKE :q)")
+        params["q"] = f"%{q}%"
+    if basename:
+        where.append("fr.basename = :basename")
+        params["basename"] = basename
+    if ext:
+        ext = ext if ext.startswith(".") else f".{ext}"
+        where.append("fr.extension = :ext")
+        params["ext"] = ext
+    if cwd:
+        where.append("fr.cwd = :cwd")
+        params["cwd"] = cwd
+    if tool:
+        where.append("fr.provider = :tool")
+        params["tool"] = tool
+    if operation:
+        where.append("fr.operations_json LIKE :operation")
+        params["operation"] = f'%"{operation}"%'
+    sql = """
+        SELECT fr.*, s.last_activity, s.first_prompt, s.tool, t.title as ai_title
+        FROM session_file_refs fr
+        JOIN sessions s ON s.id = fr.session_id
+        LEFT JOIN titles t ON t.session_id = s.id
+    """
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += """
+        ORDER BY s.last_activity DESC, fr.max_confidence DESC
+        LIMIT :limit OFFSET :offset
+    """
+    with connect() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    files = []
+    for row in rows:
+        d = dict(row)
+        try:
+            operations = json.loads(d.get("operations_json") or "[]")
+        except json.JSONDecodeError:
+            operations = []
+        files.append({
+            "session_id": d["session_id"],
+            "tool": d["tool"],
+            "title": d.get("ai_title") or (d.get("first_prompt") or "")[:80],
+            "last_activity": d.get("last_activity"),
+            "path": d["path_display"],
+            "path_normalized": d["path_normalized"],
+            "basename": d["basename"],
+            "extension": d["extension"],
+            "operations": operations,
+            "operation_summary": d["operation_summary"],
+            "mention_count": d["mention_count"],
+            "confidence": d["max_confidence"],
+        })
+    return JSONResponse({"ok": True, "files": files})
+
+
 @app.get("/status")
 def api_status() -> JSONResponse:
     age = None
@@ -373,7 +549,7 @@ def main() -> None:
     except OSError as e:
         if e.errno == errno.EADDRINUSE or "Address already in use" in str(e):
             print(f"port {port} in use — set REJOIN_PORT or adjust config", file=sys.stderr)
-            raise SystemExit(1)
+            raise SystemExit(1) from e
         raise
 
 

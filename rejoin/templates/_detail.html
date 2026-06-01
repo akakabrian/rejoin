@@ -29,6 +29,24 @@
       <pre>{{ s.codex_summary }}</pre>
     </details>
   {% endif %}
+  {% if file_refs %}
+    <section class="files-panel">
+      <div class="files-panel-title">Files involved</div>
+      <div class="file-ref-list">
+        {% for f in file_refs %}
+          <button class="file-ref"
+                  hx-get="/sessions?file={{ f.path_normalized | urlencode }}"
+                  hx-target="#session-list"
+                  hx-swap="innerHTML"
+                  title="show sessions for {{ f.path_display }}">
+            <span class="file-ref-icon file-ref-icon-{{ f.icon_class }}">{{ f.icon }}</span>
+            <span class="file-ref-path">{{ f.path_display }}</span>
+            <span class="file-ref-summary">{{ f.operation_summary }}</span>
+          </button>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
   <section class="transcript">
     {% if hidden %}
       <button class="load-earlier"
