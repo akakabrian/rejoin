@@ -83,8 +83,9 @@ def test_replace_session_file_refs_persists_events_and_aggregate(tmp_path):
         replace_session_file_refs(conn, "sess-1", events)
         conn.commit()
         aggregate = conn.execute("SELECT * FROM session_file_refs").fetchone()
-        event_count = conn.execute("SELECT COUNT(*) FROM session_file_ref_events").fetchone()[0]
+        event = conn.execute("SELECT * FROM session_file_ref_events").fetchone()
 
     assert aggregate["path_normalized"] == "rejoin/app.py"
     assert aggregate["operation_summary"] == "read 1x"
-    assert event_count == 1
+    assert event["path_normalized"] == "rejoin/app.py"
+    assert "exists_now" in event.keys()

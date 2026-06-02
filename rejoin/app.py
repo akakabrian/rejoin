@@ -6,6 +6,7 @@ import logging
 import re
 import sqlite3
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -41,6 +42,47 @@ _LAST_INDEXED_AT: float | None = None
 
 class SearchQuerySyntaxError(Exception):
     """User-supplied FTS5 query had invalid syntax."""
+
+
+@dataclass(frozen=True)
+class ParsedSearchQuery:
+    q: str | None = None
+    file: str | None = None
+    basename: str | None = None
+    ext: str | None = None
+    operation: str | None = None
+
+
+_INLINE_FILTER_RE = re.compile(
+    r'(?P<key>file|basename|ext|op):(?P<value>"[^"]+"|\'[^\']+\'|\S+)',
+    re.IGNORECASE,
+)
+
+
+def _unquote_filter_value(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def _parse_search_query(q: str | None) -> ParsedSearchQuery:
+    if not q:
+        return ParsedSearchQuery()
+
+    filters: dict[str, str] = {}
+    parts: list[str] = []
+    last = 0
+    for match in _INLINE_FILTER_RE.finditer(q):
+        parts.append(q[last:match.start()])
+        key = match.group("key").lower()
+        if key == "op":
+            key = "operation"
+        filters[key] = _unquote_filter_value(match.group("value"))
+        last = match.end()
+    parts.append(q[last:])
+    text = " ".join("".join(parts).split()) or None
+    return ParsedSearchQuery(q=text, **filters)
 
 
 def _mark_indexed() -> None:
@@ -152,6 +194,13 @@ def _fetch_sessions(
     operation: str | None = None,
     limit: int = 200,
 ) -> list[dict]:
+    parsed = _parse_search_query(q)
+    q = parsed.q
+    file = file or parsed.file
+    basename = basename or parsed.basename
+    ext = ext or parsed.ext
+    operation = operation or parsed.operation
+
     where: list[str] = []
     params: dict = {"limit": limit}
     if tool:
@@ -161,7 +210,7 @@ def _fetch_sessions(
         where.append("s.cwd = :cwd")
         params["cwd"] = cwd
     if file:
-        where.append("fr.path_normalized = :file")
+        where.append("(fr.path_normalized = :file OR fr.path_display = :file)")
         params["file"] = file
     if basename:
         where.append("fr.basename = :basename")

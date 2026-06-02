@@ -1,6 +1,9 @@
 import json
+import sys
+import types
 
-from rejoin.indexer import parse_claude_session, parse_codex_session
+from rejoin.db import connect, init_db
+from rejoin.indexer import SessionRecord, parse_claude_session, parse_codex_session
 
 
 def test_parse_claude_session_minimal(tmp_path):
@@ -115,3 +118,142 @@ def test_parse_codex_session_recovers_id_from_filename(tmp_path):
     rec = parse_codex_session(path)
     assert rec is not None
     assert rec.id == "019d69c1-6142-7670-966f-61d8d2684158"
+
+
+def _patch_reindex_db(monkeypatch, db):
+    import rejoin.indexer as indexer
+
+    monkeypatch.setattr(indexer, "init_db", lambda: init_db(db))
+    monkeypatch.setattr(indexer, "connect", lambda: connect(db))
+    return indexer
+
+
+def test_reindex_file_ref_extraction_failure_is_nonfatal(monkeypatch, tmp_path):
+    db = tmp_path / "index.db"
+    session = tmp_path / "rollout-2026-04-07-abc.jsonl"
+    session.write_text(
+        "\n".join([
+            json.dumps({
+                "type": "session_meta",
+                "payload": {"id": "sess-1", "cwd": str(tmp_path)},
+            }),
+            json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "edit rejoin/app.py"}],
+                },
+            }),
+        ])
+    )
+    indexer = _patch_reindex_db(monkeypatch, db)
+    monkeypatch.setattr(indexer, "PARSERS", {"codex": parse_codex_session})
+    monkeypatch.setattr(indexer, "_iter_paths", lambda tool: [session])
+    monkeypatch.setattr(
+        indexer,
+        "_replace_file_refs_for_record",
+        lambda conn, rec: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "rejoin.external",
+        types.SimpleNamespace(EXTERNAL_TOOLS=(), list_external_sessions=lambda tool: []),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "rejoin.hermes",
+        types.SimpleNamespace(list_hermes_sessions=lambda: []),
+    )
+
+    stats = indexer.reindex()
+
+    assert stats["codex_new"] == 1
+    assert stats["file_ref_errors"] == 1
+    assert stats["errors"] == 0
+    with connect(db) as conn:
+        assert conn.execute("SELECT id FROM sessions").fetchone()["id"] == "sess-1"
+
+
+def test_reindex_counts_external_mtime_skips(monkeypatch, tmp_path):
+    db = tmp_path / "index.db"
+    init_db(db)
+    with connect(db) as conn:
+        conn.execute(
+            "INSERT INTO sessions (id, tool, path, mtime) VALUES ('ext-1', 'opencode', 'agent-sessions://opencode/ext-1', 222.0)"
+        )
+        conn.commit()
+    indexer = _patch_reindex_db(monkeypatch, db)
+    monkeypatch.setattr(indexer, "PARSERS", {})
+    monkeypatch.setitem(
+        sys.modules,
+        "rejoin.external",
+        types.SimpleNamespace(
+            EXTERNAL_TOOLS=("opencode",),
+            list_external_sessions=lambda tool: [
+                SessionRecord(
+                    id="ext-1",
+                    tool="opencode",
+                    path="agent-sessions://opencode/ext-1",
+                    mtime=222.0,
+                )
+            ],
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "rejoin.hermes",
+        types.SimpleNamespace(list_hermes_sessions=lambda: []),
+    )
+
+    stats = indexer.reindex()
+
+    assert stats["opencode_skipped"] == 1
+    assert stats["opencode_updated"] == 0
+
+
+def test_reindex_counts_hermes_mtime_skips(monkeypatch, tmp_path):
+    db = tmp_path / "index.db"
+    init_db(db)
+    with connect(db) as conn:
+        conn.execute(
+            "INSERT INTO sessions (id, tool, path, mtime) VALUES ('h1', 'hermes', 'hermes://h1', 333.0)"
+        )
+        conn.commit()
+    indexer = _patch_reindex_db(monkeypatch, db)
+    monkeypatch.setattr(indexer, "PARSERS", {})
+    monkeypatch.setitem(
+        sys.modules,
+        "rejoin.external",
+        types.SimpleNamespace(EXTERNAL_TOOLS=(), list_external_sessions=lambda tool: []),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "rejoin.hermes",
+        types.SimpleNamespace(
+            list_hermes_sessions=lambda: [
+                {
+                    "id": "h1",
+                    "tool": "hermes",
+                    "path": "hermes://h1",
+                    "cwd": None,
+                    "started_at": None,
+                    "last_activity": None,
+                    "mtime": 333.0,
+                    "size": 0,
+                    "message_count": 0,
+                    "tool_call_count": 0,
+                    "model": None,
+                    "first_prompt": None,
+                    "last_prompt": None,
+                    "codex_summary": None,
+                    "native_title": None,
+                }
+            ]
+        ),
+    )
+
+    stats = indexer.reindex()
+
+    assert stats["hermes_skipped"] == 1
+    assert stats["hermes_updated"] == 0

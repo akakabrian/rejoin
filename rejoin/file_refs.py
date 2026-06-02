@@ -373,11 +373,13 @@ def replace_session_file_refs(
         INSERT INTO session_file_ref_events (
             session_id, provider, cwd, turn_index, event_index, source_kind,
             path_raw, path_normalized, path_display, path_scope, basename,
-            extension, operation, confidence, line_start, line_end, command, excerpt
+            extension, operation, confidence, exists_now, line_start, line_end,
+            command, excerpt
         ) VALUES (
             :session_id, :provider, :cwd, :turn_index, :event_index, :source_kind,
             :path_raw, :path_normalized, :path_display, :path_scope, :basename,
-            :extension, :operation, :confidence, :line_start, :line_end, :command, :excerpt
+            :extension, :operation, :confidence, :exists_now, :line_start,
+            :line_end, :command, :excerpt
         )
         """,
         [event.__dict__ for event in events],

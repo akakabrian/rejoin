@@ -212,9 +212,16 @@ def _replace_file_refs_for_record(conn, rec: SessionRecord) -> None:
     replace_session_file_refs(conn, rec.id, events)
 
 
+def _replace_file_refs_safely(conn, rec: SessionRecord, stats: dict) -> None:
+    try:
+        _replace_file_refs_for_record(conn, rec)
+    except Exception:
+        stats["file_ref_errors"] += 1
+
+
 def reindex(force: bool = False) -> dict:
     init_db()
-    stats = {"errors": 0}
+    stats = {"errors": 0, "file_ref_errors": 0}
     for tool in PARSERS:
         stats[f"{tool}_new"] = 0
         stats[f"{tool}_updated"] = 0
@@ -240,7 +247,7 @@ def reindex(force: bool = False) -> dict:
                         if rec is None:
                             continue
                         upsert(conn, rec)
-                        _replace_file_refs_for_record(conn, rec)
+                        _replace_file_refs_safely(conn, rec, stats)
                         stats[f"{tool}_updated" if prior else f"{tool}_new"] += 1
                         changed += 1
                     except Exception:
@@ -258,13 +265,15 @@ def reindex(force: bool = False) -> dict:
             for tool in EXTERNAL_TOOLS:
                 stats.setdefault(f"{tool}_new", 0)
                 stats.setdefault(f"{tool}_updated", 0)
+                stats.setdefault(f"{tool}_skipped", 0)
                 try:
                     for rec in list_external_sessions(tool):
                         prior = existing.get(rec.path)
                         if prior and not force and abs(prior[1] - rec.mtime) < 1e-6:
+                            stats[f"{tool}_skipped"] += 1
                             continue
                         upsert(conn, rec)
-                        _replace_file_refs_for_record(conn, rec)
+                        _replace_file_refs_safely(conn, rec, stats)
                         stats[f"{tool}_updated" if prior else f"{tool}_new"] += 1
                         changed += 1
                 except Exception:
@@ -275,6 +284,7 @@ def reindex(force: bool = False) -> dict:
             # the `titles` table so our OpenRouter titler doesn't regenerate.
             stats.setdefault("hermes_new", 0)
             stats.setdefault("hermes_updated", 0)
+            stats.setdefault("hermes_skipped", 0)
             try:
                 from .hermes import list_hermes_sessions
                 for raw in list_hermes_sessions():
@@ -282,8 +292,11 @@ def reindex(force: bool = False) -> dict:
                     rec = SessionRecord(**{k: v for k, v in raw.items()
                                            if k != "indexed_at"})
                     prior = existing.get(rec.path)
+                    if prior and not force and abs(prior[1] - rec.mtime) < 1e-6:
+                        stats["hermes_skipped"] += 1
+                        continue
                     upsert(conn, rec)
-                    _replace_file_refs_for_record(conn, rec)
+                    _replace_file_refs_safely(conn, rec, stats)
                     stats["hermes_updated" if prior else "hermes_new"] += 1
                     changed += 1
                     if native_title:

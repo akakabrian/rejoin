@@ -27,7 +27,7 @@
         <option value="">all cwds</option>
         {% for c in cwds %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
       </select>
-      <input name="q" type="search" placeholder="search titles/prompts…">
+      <input name="q" type="search" placeholder="search titles/prompts, file:, basename:, ext:, op:">
       <label class="toggle" title="group by cwd">
         <input type="checkbox" name="group" value="true"> grouped
       </label>

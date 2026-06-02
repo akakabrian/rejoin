@@ -15,7 +15,9 @@
       <div class="subtitle muted">last: {{ s.last_prompt[:90] | highlight(q) }}</div>
     {% endif %}
     {% if s.file_count %}
-      <div class="file-count">{{ s.file_count }} files</div>
+      <span class="file-count" title="{{ s.file_count }} referenced file{{ '' if s.file_count == 1 else 's' }}">
+        {{ s.file_count }} file{{ '' if s.file_count == 1 else 's' }}
+      </span>
     {% endif %}
   </td>
   <td class="cwd">{{ s.cwd | short_cwd }}</td>

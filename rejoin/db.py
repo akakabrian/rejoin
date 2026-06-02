@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .config import DB_PATH, ensure_data_dir
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS session_file_ref_events (
     extension TEXT,
     operation TEXT NOT NULL DEFAULT 'mentioned',
     confidence REAL NOT NULL DEFAULT 0.5,
+    exists_now INTEGER,
     line_start INTEGER,
     line_end INTEGER,
     command TEXT,
@@ -134,6 +135,20 @@ class SchemaVersionMismatch(RuntimeError):
     """Raised when the on-disk DB schema version doesn't match this build."""
 
 
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row["name"] == column for row in rows)
+
+
+def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
+    # v2 keeps the file-reference schema additive and records per-event
+    # existence checks, matching the already-aggregated session_file_refs row.
+    conn.executescript(SCHEMA)
+    if not _has_column(conn, "session_file_ref_events", "exists_now"):
+        conn.execute("ALTER TABLE session_file_ref_events ADD COLUMN exists_now INTEGER")
+    conn.execute("PRAGMA user_version = 2")
+
+
 def init_db(path: Path = DB_PATH) -> None:
     with connect(path) as conn:
         existing = conn.execute("PRAGMA user_version").fetchone()[0]
@@ -141,10 +156,14 @@ def init_db(path: Path = DB_PATH) -> None:
             conn.executescript(SCHEMA)
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             conn.commit()
+        elif existing == 1:
+            _migrate_v1_to_v2(conn)
+            conn.commit()
         elif existing == SCHEMA_VERSION:
             # already on the current schema; re-run `IF NOT EXISTS` is safe
             # and lets us add new tables in place.
             conn.executescript(SCHEMA)
+            conn.commit()
         else:
             raise SchemaVersionMismatch(
                 f"rejoin DB at {path} is on schema v{existing}, "
