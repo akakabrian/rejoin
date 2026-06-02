@@ -6,7 +6,6 @@ import logging
 import re
 import sqlite3
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -17,6 +16,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 
+from .brief import (
+    brief_markdown,
+    build_session_brief,
+    source_mtime,
+    source_path_exists,
+    turn_to_dict,
+)
 from .common import Tool, iso_to_epoch, short_cwd, utcnow_iso
 from .config import (
     ACTIVE_WINDOW_SEC,
@@ -26,12 +32,13 @@ from .config import (
     TRANSCRIPT_TAIL,
     TURN_CACHE_SIZE,
 )
-from .db import connect, init_db
-from .file_refs import file_ref_icon
+from .db import connect, init_db, transaction
+from .file_refs import extract_file_ref_events, file_ref_icon, replace_session_file_refs
 from .indexer import reindex
 from .resume import MissingBinary, codexia_url, launch_tmux, resume_command
+from .search_query import file_filter_targets, parse_search_query
 from .titler import backfill_titles
-from .transcript import Turn, load_turns
+from .transcript import load_turns
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
@@ -42,47 +49,6 @@ _LAST_INDEXED_AT: float | None = None
 
 class SearchQuerySyntaxError(Exception):
     """User-supplied FTS5 query had invalid syntax."""
-
-
-@dataclass(frozen=True)
-class ParsedSearchQuery:
-    q: str | None = None
-    file: str | None = None
-    basename: str | None = None
-    ext: str | None = None
-    operation: str | None = None
-
-
-_INLINE_FILTER_RE = re.compile(
-    r'(?P<key>file|basename|ext|op):(?P<value>"[^"]+"|\'[^\']+\'|\S+)',
-    re.IGNORECASE,
-)
-
-
-def _unquote_filter_value(value: str) -> str:
-    value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1]
-    return value
-
-
-def _parse_search_query(q: str | None) -> ParsedSearchQuery:
-    if not q:
-        return ParsedSearchQuery()
-
-    filters: dict[str, str] = {}
-    parts: list[str] = []
-    last = 0
-    for match in _INLINE_FILTER_RE.finditer(q):
-        parts.append(q[last:match.start()])
-        key = match.group("key").lower()
-        if key == "op":
-            key = "operation"
-        filters[key] = _unquote_filter_value(match.group("value"))
-        last = match.end()
-    parts.append(q[last:])
-    text = " ".join("".join(parts).split()) or None
-    return ParsedSearchQuery(q=text, **filters)
 
 
 def _mark_indexed() -> None:
@@ -192,14 +158,22 @@ def _fetch_sessions(
     basename: str | None = None,
     ext: str | None = None,
     operation: str | None = None,
+    active: bool | None = None,
+    pinned: bool | None = None,
     limit: int = 200,
 ) -> list[dict]:
-    parsed = _parse_search_query(q)
+    parsed = parse_search_query(q)
     q = parsed.q
-    file = file or parsed.file
-    basename = basename or parsed.basename
+    parsed_file, parsed_basename = file_filter_targets(parsed.file)
+    query_file, query_basename = file_filter_targets(file)
+    file = query_file or parsed_file
+    basename = basename or query_basename or parsed.basename or parsed_basename
     ext = ext or parsed.ext
     operation = operation or parsed.operation
+    active = active if active is not None else parsed.active
+    pinned = pinned if pinned is not None else parsed.pinned
+    tool = tool or parsed.tool
+    cwd = cwd or parsed.cwd
 
     where: list[str] = []
     params: dict = {"limit": limit}
@@ -222,6 +196,10 @@ def _fetch_sessions(
     if operation:
         where.append("fr.operations_json LIKE :operation")
         params["operation"] = f'%"{operation}"%'
+    if pinned is True:
+        where.append("p.pinned_at IS NOT NULL")
+    elif pinned is False:
+        where.append("p.pinned_at IS NULL")
 
     sql = """
         SELECT s.*, t.title as ai_title,
@@ -267,8 +245,75 @@ def _fetch_sessions(
         d = dict(r)
         d["active"] = _is_active(d.get("last_activity"), now_epoch,
                                  running, d.get("id"))
-        out.append(d)
+        if active is None or d["active"] is active:
+            out.append(d)
     return out
+
+
+def _session_json(row: dict) -> dict:
+    return {
+        "warnings": _session_warnings(row),
+        "id": row["id"],
+        "tool": row["tool"],
+        "path": row["path"],
+        "cwd": row.get("cwd"),
+        "started_at": row.get("started_at"),
+        "last_activity": row.get("last_activity"),
+        "mtime": row.get("mtime"),
+        "size": row.get("size"),
+        "message_count": row.get("message_count"),
+        "tool_call_count": row.get("tool_call_count"),
+        "model": row.get("model"),
+        "first_prompt": row.get("first_prompt"),
+        "last_prompt": row.get("last_prompt"),
+        "codex_summary": row.get("codex_summary"),
+        "indexed_at": row.get("indexed_at"),
+        "title": row.get("ai_title"),
+        "pinned": bool(row.get("pinned")),
+        "pinned_at": row.get("pinned_at"),
+        "active": bool(row.get("active")),
+        "file_count": row.get("file_count", 0),
+    }
+
+
+def _session_warnings(row: dict) -> list[str]:
+    warnings = []
+    src_mtime = source_mtime(row.get("path"))
+    if source_path_exists(row.get("path")) is False:
+        warnings.append("source_path_missing")
+    if src_mtime is None:
+        warnings.append("freshness_unknown")
+    elif row.get("mtime") is not None and abs(float(src_mtime) - float(row.get("mtime") or 0.0)) >= 1e-6:
+        warnings.append("indexed_stale")
+    return warnings
+
+
+def _load_session_tail(row: dict, *, fresh: bool, tail: int) -> dict:
+    warnings = _session_warnings(row)
+    tail_error = None
+    tail_source = "live" if fresh else "indexed"
+    try:
+        if fresh:
+            turns = load_turns(row["tool"], Path(row["path"]))
+        else:
+            turns = _load_turns_cached(row["tool"], row["path"], row.get("mtime") or 0.0)
+    except Exception as e:
+        tail_error = str(e)
+        tail_source = "unavailable"
+        warnings.append("tail_read_failed")
+        turns = []
+    tail_count = max(0, tail)
+    start = max(0, len(turns) - tail_count) if tail_count else len(turns)
+    tail_turns = [turn_to_dict(turn, idx) for idx, turn in enumerate(turns[start:], start=start)]
+    return {
+        "ok": True,
+        "warnings": warnings,
+        "session_id": row["id"],
+        "tail_source": tail_source,
+        "tail_error": tail_error,
+        "turn_count": len(turns),
+        "tail": tail_turns,
+    }
 
 
 def _distinct_cwds() -> list[str]:
@@ -281,10 +326,18 @@ def _distinct_cwds() -> list[str]:
 def _get_session(session_id: str) -> dict | None:
     with connect() as conn:
         row = conn.execute(
-            """SELECT s.*, t.title as ai_title, p.pinned_at IS NOT NULL as pinned
+            """SELECT s.*, t.title as ai_title,
+                      p.pinned_at IS NOT NULL as pinned,
+                      p.pinned_at as pinned_at,
+                      COALESCE(fc.file_count, 0) as file_count
                FROM sessions s
                LEFT JOIN titles t ON t.session_id = s.id
                LEFT JOIN pins p ON p.session_id = s.id
+               LEFT JOIN (
+                   SELECT session_id, COUNT(*) as file_count
+                   FROM session_file_refs
+                   GROUP BY session_id
+               ) fc ON fc.session_id = s.id
                WHERE s.id = :id""",
             {"id": session_id},
         ).fetchone()
@@ -330,226 +383,6 @@ def _get_session_file_refs(session_id: str, limit: int = 20) -> list[dict]:
         refs.append(d)
     return refs
 
-
-def _source_mtime(path: str | None) -> float | None:
-    if not path or "://" in path:
-        return None
-    try:
-        return Path(path).stat().st_mtime
-    except OSError:
-        return None
-
-
-def _turn_to_dict(turn: Turn, index: int) -> dict:
-    return {
-        "index": index,
-        "role": turn.role,
-        "text": turn.text,
-        "meta": turn.meta,
-    }
-
-
-def _sentence(text: str | None, limit: int = 220) -> str | None:
-    if not text:
-        return None
-    compact = " ".join(text.split())
-    if len(compact) <= limit:
-        return compact
-    return compact[:limit - 1].rstrip() + "..."
-
-
-def _operation_signals(file_refs: list[dict]) -> list[str]:
-    signals: list[str] = []
-    seen: set[str] = set()
-    for ref in file_refs:
-        for op in ref.get("operations") or []:
-            if op not in seen:
-                seen.add(op)
-                signals.append(op)
-    return signals
-
-
-def _indexed_tail(row: dict) -> list[Turn]:
-    turns = []
-    if row.get("first_prompt"):
-        turns.append(Turn("user", row["first_prompt"], {"source": "indexed:first_prompt"}))
-    if row.get("codex_summary"):
-        turns.append(Turn("assistant", row["codex_summary"], {"source": "indexed:codex_summary"}))
-    if row.get("last_prompt") and row.get("last_prompt") != row.get("first_prompt"):
-        turns.append(Turn("user", row["last_prompt"], {"source": "indexed:last_prompt"}))
-    return turns
-
-
-def _build_summary(row: dict, file_refs: list[dict], tail_turns: list[dict]) -> dict:
-    title = row.get("ai_title")
-    first_prompt = _sentence(row.get("first_prompt"))
-    cwd = row.get("cwd")
-    codex_summary = _sentence(row.get("codex_summary"), 360)
-
-    overall_parts = []
-    if title:
-        overall_parts.append(f"Title: {title}.")
-    if first_prompt:
-        overall_parts.append(f"Started with: {first_prompt}")
-    if cwd:
-        overall_parts.append(f"Workspace: {cwd}.")
-    if codex_summary:
-        overall_parts.append(f"Indexed summary: {codex_summary}")
-    overall = " ".join(overall_parts) or "No indexed session prompt or summary is available."
-
-    progress_parts = []
-    if codex_summary:
-        progress_parts.append(codex_summary)
-    if file_refs:
-        ops = _operation_signals(file_refs)
-        op_text = ", ".join(ops)
-        top_files = ", ".join(ref["path_display"] for ref in file_refs[:5])
-        progress_parts.append(f"Referenced {len(file_refs)} files: {top_files}.")
-        if op_text:
-            progress_parts.append(f"File operation signals: {op_text}.")
-    notable = [
-        _sentence(turn["text"], 180)
-        for turn in tail_turns
-        if turn["role"] in {"assistant", "tool_result"} and turn.get("text")
-    ]
-    if notable:
-        progress_parts.append("Recent notable turn: " + notable[-1])
-    progress = " ".join(progress_parts) or "No progress evidence has been extracted yet."
-
-    tail = [
-        f"{turn['index']}: {turn['role']}: {_sentence(turn['text'], 240) or ''}"
-        for turn in tail_turns
-    ]
-    return {"overall": overall, "progress": progress, "tail": tail}
-
-
-def _files_for_brief(file_refs: list[dict]) -> list[dict]:
-    return [
-        {
-            "path": ref["path_display"],
-            "path_normalized": ref["path_normalized"],
-            "path_scope": ref["path_scope"],
-            "basename": ref["basename"],
-            "extension": ref["extension"],
-            "operations": ref["operations"],
-            "operation_summary": ref["operation_summary"],
-            "mention_count": ref["mention_count"],
-            "exists_now": bool(ref["exists_now"]) if ref["exists_now"] is not None else None,
-            "confidence": ref["max_confidence"],
-        }
-        for ref in file_refs
-    ]
-
-
-def _build_session_brief(row: dict, fresh: bool, tail: int) -> dict:
-    source_mtime = _source_mtime(row.get("path"))
-    indexed_mtime = row.get("mtime")
-    freshness_known = source_mtime is not None and indexed_mtime is not None
-    indexed_is_stale = None
-    if freshness_known:
-        indexed_is_stale = abs(float(source_mtime) - float(indexed_mtime or 0.0)) >= 1e-6
-    tail_error = None
-    tail_is_live = bool(fresh)
-    if fresh:
-        try:
-            turns = load_turns(row["tool"], Path(row["path"]))
-        except Exception as e:
-            tail_error = str(e)
-            tail_is_live = False
-            turns = _indexed_tail(row)
-    else:
-        try:
-            turns = _load_turns_cached(row["tool"], row["path"], row.get("mtime") or 0.0)
-        except Exception as e:
-            tail_error = str(e)
-            turns = _indexed_tail(row)
-    tail_count = max(0, tail)
-    start = max(0, len(turns) - tail_count) if tail_count else len(turns)
-    tail_turns = [_turn_to_dict(turn, idx) for idx, turn in enumerate(turns[start:], start=start)]
-    file_refs = _get_session_file_refs(row["id"], 200)
-    summary = _build_summary(row, file_refs, tail_turns)
-    last_turn = tail_turns[-1] if tail_turns else None
-    return {
-        "ok": True,
-        "session_id": row["id"],
-        "tool": row["tool"],
-        "title": row.get("ai_title"),
-        "cwd": row.get("cwd"),
-        "summary": summary,
-        "freshness": {
-            "active": bool(row.get("active")),
-            "source_mtime": source_mtime,
-            "indexed_mtime": indexed_mtime,
-            "indexed_is_stale": indexed_is_stale,
-            "tail_is_live": tail_is_live,
-            "files_are_indexed": bool(file_refs),
-            "files_may_be_stale": indexed_is_stale if file_refs else False,
-            "freshness_known": freshness_known,
-            "turn_count": len(turns),
-            "last_turn_index": last_turn["index"] if last_turn else None,
-            "last_turn_role": last_turn["role"] if last_turn else None,
-            "last_turn_at": (last_turn.get("meta") or {}).get("ts") if last_turn else None,
-            "last_indexed_at": row.get("indexed_at"),
-        },
-        "tail_error": tail_error,
-        "files": _files_for_brief(file_refs),
-        "tail": tail_turns,
-    }
-
-
-def _brief_markdown(brief: dict) -> str:
-    freshness = brief["freshness"]
-    lines = [
-        f"# Session Brief: {brief['session_id']}",
-        "",
-        "## Overall",
-        brief["summary"]["overall"],
-        "",
-        "## Progress",
-        brief["summary"]["progress"],
-        "",
-        "## Freshness",
-        f"- active: {str(freshness['active']).lower()}",
-        f"- source_mtime: {freshness['source_mtime']}",
-        f"- indexed_mtime: {freshness['indexed_mtime']}",
-        f"- indexed_is_stale: {freshness['indexed_is_stale']}",
-        f"- tail_is_live: {str(freshness['tail_is_live']).lower()}",
-        f"- files_are_indexed: {str(freshness['files_are_indexed']).lower()}",
-        f"- files_may_be_stale: {freshness['files_may_be_stale']}",
-        f"- freshness_known: {str(freshness['freshness_known']).lower()}",
-        f"- turn_count: {freshness['turn_count']}",
-        f"- last_turn_index: {freshness['last_turn_index']}",
-        f"- last_turn_role: {freshness['last_turn_role']}",
-        f"- last_turn_at: {freshness['last_turn_at']}",
-        f"- last_indexed_at: {freshness['last_indexed_at']}",
-        "",
-        "## Files",
-    ]
-    if brief["files"]:
-        for file in brief["files"]:
-            ops = ", ".join(file["operations"]) or "mentioned"
-            lines.append(f"- {file['path']} ({ops}; {file['mention_count']} mentions)")
-    else:
-        lines.append("- none")
-    lines.extend(["", "## Tail"])
-    if brief.get("tail_error"):
-        lines.append(f"_Tail live-read error: {brief['tail_error']}_")
-        lines.append("")
-    if brief["tail"]:
-        for turn in brief["tail"]:
-            lines.append(f"### {turn['index']} · {turn['role']}")
-            ts = (turn.get("meta") or {}).get("ts")
-            if ts:
-                lines.append(f"_at {ts}_")
-            lines.append("")
-            lines.append("```text")
-            lines.append(_sentence(turn["text"], 1200) or "")
-            lines.append("```")
-    else:
-        lines.append("- none")
-    return "\n".join(lines) + "\n"
-
-
 def _group_by_cwd(sessions: list[dict]) -> list[dict]:
     pinned = [s for s in sessions if s.get("pinned")]
     others = [s for s in sessions if not s.get("pinned")]
@@ -589,6 +422,8 @@ def sessions_fragment(
     basename: str | None = Query(None),
     ext: str | None = Query(None),
     operation: str | None = Query(None),
+    active: bool | None = Query(None),
+    pinned: bool | None = Query(None),
     group: bool = Query(False),
 ) -> HTMLResponse | JSONResponse:
     try:
@@ -600,6 +435,8 @@ def sessions_fragment(
             basename or None,
             ext or None,
             operation or None,
+            active,
+            pinned,
         )
     except SearchQuerySyntaxError:
         return JSONResponse({"matches": [], "error": "query syntax"})
@@ -608,6 +445,82 @@ def sessions_fragment(
         request, "_sessions.html",
         {"sessions": sessions, "groups": groups, "q": q, "group": group},
     )
+
+
+@app.get("/api/sessions")
+def api_sessions(
+    tool: str | None = Query(None),
+    cwd: str | None = Query(None),
+    q: str | None = Query(None),
+    file: str | None = Query(None),
+    basename: str | None = Query(None),
+    ext: str | None = Query(None),
+    operation: str | None = Query(None),
+    active: bool | None = Query(None),
+    pinned: bool | None = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+) -> JSONResponse:
+    try:
+        sessions = _fetch_sessions(
+            tool or None,
+            cwd or None,
+            q or None,
+            file or None,
+            basename or None,
+            ext or None,
+            operation or None,
+            active,
+            pinned,
+            limit,
+        )
+    except SearchQuerySyntaxError:
+        return JSONResponse({"ok": False, "error": "query syntax"}, status_code=400)
+    return JSONResponse({"ok": True, "sessions": [_session_json(row) for row in sessions]})
+
+
+@app.get("/api/sessions/{session_id}")
+def api_session(session_id: str) -> JSONResponse:
+    row = _get_session(session_id)
+    if not row:
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    session = _session_json(row)
+    return JSONResponse({"ok": True, "warnings": session["warnings"], "session": session})
+
+
+@app.get("/api/projects")
+def api_projects(limit: int = Query(200, ge=1, le=500)) -> JSONResponse:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.cwd,
+                   COUNT(*) as session_count,
+                   MAX(s.last_activity) as last_activity,
+                   SUM(COALESCE(fc.file_count, 0)) as file_ref_count,
+                   GROUP_CONCAT(DISTINCT s.tool) as tools
+            FROM sessions s
+            LEFT JOIN (
+                SELECT session_id, COUNT(*) as file_count
+                FROM session_file_refs
+                GROUP BY session_id
+            ) fc ON fc.session_id = s.id
+            GROUP BY s.cwd
+            ORDER BY last_activity DESC
+            LIMIT :limit
+            """,
+            {"limit": limit},
+        ).fetchall()
+    projects = [
+        {
+            "cwd": row["cwd"],
+            "label": short_cwd(row["cwd"]) if row["cwd"] else "(no cwd)",
+            "session_count": row["session_count"],
+            "file_ref_count": row["file_ref_count"] or 0,
+            "last_activity": row["last_activity"],
+            "tools": sorted((row["tools"] or "").split(",")) if row["tools"] else [],
+        }
+        for row in rows
+    ]
+    return JSONResponse({"ok": True, "projects": projects})
 
 
 @app.get("/session/{session_id}", response_class=HTMLResponse)
@@ -690,8 +603,11 @@ def session_resume(session_id: str) -> JSONResponse:
 
 
 @app.post("/reindex")
-async def api_reindex(titles: bool = Query(True)) -> JSONResponse:
-    stats = await asyncio.to_thread(reindex, False)
+async def api_reindex(
+    titles: bool = Query(True),
+    force: bool = Query(False),
+) -> JSONResponse:
+    stats = await asyncio.to_thread(reindex, force)
     _mark_indexed()
     if titles:
         stats["titles"] = await backfill_titles()
@@ -722,6 +638,18 @@ def api_session_files(session_id: str) -> JSONResponse:
     return JSONResponse({"ok": True, "session_id": session_id, "files": files})
 
 
+@app.get("/api/sessions/{session_id}/tail")
+def api_session_tail(
+    session_id: str,
+    fresh: bool = Query(True),
+    tail: int = Query(12, ge=0, le=200),
+) -> JSONResponse:
+    row = _get_session(session_id)
+    if not row:
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    return JSONResponse(_load_session_tail(row, fresh=fresh, tail=tail))
+
+
 @app.get("/api/sessions/{session_id}/brief", response_model=None)
 def api_session_brief(
     session_id: str,
@@ -733,12 +661,78 @@ def api_session_brief(
     if not row:
         return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
     try:
-        brief = _build_session_brief(row, fresh=fresh, tail=tail)
+        brief = build_session_brief(
+            row,
+            _get_session_file_refs(session_id, 200),
+            fresh=fresh,
+            tail=tail,
+            cached_loader=_load_turns_cached,
+        )
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     if brief_format == "markdown":
-        return PlainTextResponse(_brief_markdown(brief), media_type="text/markdown")
+        return PlainTextResponse(brief_markdown(brief), media_type="text/markdown")
     return JSONResponse(brief)
+
+
+@app.post("/api/sessions/{session_id}/file-refs/rebuild")
+def api_session_file_refs_rebuild(session_id: str) -> JSONResponse:
+    row = _get_session(session_id)
+    if not row:
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    try:
+        turns = load_turns(row["tool"], Path(row["path"]))
+        events = extract_file_ref_events(row["id"], row["tool"], row.get("cwd"), turns)
+        with connect() as conn:
+            with transaction(conn):
+                replace_session_file_refs(conn, row["id"], events)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    return JSONResponse({
+        "ok": True,
+        "session_id": session_id,
+        "event_count": len(events),
+        "file_ref_count": len(_get_session_file_refs(session_id, 200)),
+    })
+
+
+@app.get("/api/diagnostics")
+def api_diagnostics() -> JSONResponse:
+    with connect() as conn:
+        schema_version = conn.execute("PRAGMA user_version").fetchone()[0]
+        session_count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        file_ref_count = conn.execute("SELECT COUNT(*) FROM session_file_refs").fetchone()[0]
+        file_ref_event_count = conn.execute(
+            "SELECT COUNT(*) FROM session_file_ref_events"
+        ).fetchone()[0]
+        provider_counts = {
+            row["tool"]: row["count"]
+            for row in conn.execute(
+                "SELECT tool, COUNT(*) as count FROM sessions GROUP BY tool ORDER BY tool"
+            )
+        }
+        provider_file_ref_counts = {
+            row["provider"]: row["count"]
+            for row in conn.execute(
+                """
+                SELECT provider, COUNT(*) as count
+                FROM session_file_refs
+                GROUP BY provider
+                ORDER BY provider
+                """
+            )
+        }
+    return JSONResponse({
+        "ok": True,
+        "schema": {"user_version": schema_version},
+        "sessions": {"count": session_count, "by_provider": provider_counts},
+        "file_refs": {
+            "count": file_ref_count,
+            "event_count": file_ref_event_count,
+            "by_provider": provider_file_ref_counts,
+        },
+        "providers": provider_counts,
+    })
 
 
 @app.get("/api/files/search")

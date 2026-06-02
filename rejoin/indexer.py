@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -10,6 +11,8 @@ from .config import CLAUDE_PROJECTS_ROOT, CODEX_SESSIONS_ROOT, OPENCLAW_AGENTS_R
 from .db import connect, init_db, refresh_fts, transaction
 from .file_refs import extract_file_ref_events, replace_session_file_refs
 from .transcript import load_turns
+
+log = logging.getLogger("rejoin.indexer")
 
 
 @dataclass
@@ -215,8 +218,15 @@ def _replace_file_refs_for_record(conn, rec: SessionRecord) -> None:
 def _replace_file_refs_safely(conn, rec: SessionRecord, stats: dict) -> None:
     try:
         _replace_file_refs_for_record(conn, rec)
-    except Exception:
+    except Exception as e:
         stats["file_ref_errors"] += 1
+        log.warning(
+            "file-ref extraction failed: provider=%s session_id=%s path=%s error=%s",
+            rec.tool,
+            rec.id,
+            rec.path,
+            e,
+        )
 
 
 def reindex(force: bool = False) -> dict:
