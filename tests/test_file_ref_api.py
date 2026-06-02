@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 import rejoin.app as app_module
@@ -55,6 +57,78 @@ def _build_db(path):
         )
         conn.commit()
         refresh_fts(conn)
+
+
+def _write_codex_transcript(path, session_id="sess-brief", cwd="/tmp/proj", extra_turns=None):
+    events = [
+        {
+            "type": "session_meta",
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "payload": {"id": session_id, "cwd": cwd},
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-01T00:00:01+00:00",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Build live session brief"}],
+            },
+        },
+        {
+            "type": "response_item",
+            "timestamp": "2026-01-01T00:00:02+00:00",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "Added the initial API route."}],
+            },
+        },
+    ]
+    events.extend(extra_turns or [])
+    path.write_text("\n".join(json.dumps(event) for event in events))
+
+
+def _build_brief_db(path, transcript_path, *, indexed_mtime=None):
+    init_db(path)
+    if indexed_mtime is None:
+        indexed_mtime = transcript_path.stat().st_mtime
+    with connect(path) as conn:
+        conn.execute(
+            """
+            INSERT INTO sessions (
+                id, tool, path, cwd, first_prompt, last_prompt, codex_summary,
+                last_activity, mtime, indexed_at
+            ) VALUES (
+                'sess-brief', 'codex', :path, '/tmp/proj',
+                'Build live session brief', 'Add markdown output',
+                'Implemented brief scaffolding and tests.',
+                '2026-01-01T00:00:00+00:00', :mtime,
+                '2026-01-01T00:05:00+00:00'
+            )
+            """,
+            {"path": str(transcript_path), "mtime": indexed_mtime},
+        )
+        conn.execute(
+            """
+            INSERT INTO titles (session_id, title, content_hash)
+            VALUES ('sess-brief', 'Live Session Brief MVP', 'hash')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO session_file_refs (
+                session_id, provider, cwd, path_normalized, path_display,
+                path_scope, basename, extension, operations_json,
+                operation_summary, mention_count, max_confidence, exists_now
+            ) VALUES (
+                'sess-brief', 'codex', '/tmp/proj', 'rejoin/app.py', 'rejoin/app.py',
+                'project', 'app.py', '.py', '["edited", "tested"]',
+                'edited 1x, tested 1x', 2, 0.95, 1
+            )
+            """
+        )
+        conn.commit()
 
 
 def test_changed_count_includes_all_providers():
@@ -153,3 +227,129 @@ def test_session_fragment_supports_inline_basename_with_text_query(monkeypatch, 
     assert response.status_code == 200
     assert "app.py" in response.text
     assert "review markdown" not in response.text
+
+
+def test_api_session_brief_completed_session(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(transcript)
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/brief")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["summary"]["overall"].startswith("Title: Live Session Brief MVP")
+    assert data["freshness"]["active"] is False
+    assert data["freshness"]["indexed_is_stale"] is False
+    assert data["freshness"]["turn_count"] == 2
+    assert data["freshness"]["last_indexed_at"] == "2026-01-01T00:05:00+00:00"
+
+
+def test_api_session_brief_active_stale_session_live_reads(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(
+        transcript,
+        extra_turns=[
+            {
+                "type": "response_item",
+                "timestamp": "2026-01-01T00:00:03+00:00",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Fresh tail turn from disk."}],
+                },
+            }
+        ],
+    )
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript, indexed_mtime=transcript.stat().st_mtime - 10)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: {"sess-brief"})
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/brief", params={"fresh": "true"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["freshness"]["active"] is True
+    assert data["freshness"]["indexed_is_stale"] is True
+    assert data["freshness"]["turn_count"] == 3
+    assert data["tail"][-1]["text"] == "Fresh tail turn from disk."
+
+
+def test_api_session_brief_markdown_format(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(transcript)
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/brief", params={"format": "markdown"})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert "# Session Brief: sess-brief" in response.text
+    assert "## Progress" in response.text
+    assert "- rejoin/app.py" in response.text
+
+
+def test_api_session_brief_tail_limit(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(
+        transcript,
+        extra_turns=[
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "Final question"}],
+                },
+            },
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Final answer"}],
+                },
+            },
+        ],
+    )
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/brief", params={"tail": 1})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["tail"]) == 1
+    assert data["tail"][0]["text"] == "Final answer"
+
+
+def test_api_session_brief_includes_file_refs(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(transcript)
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/brief")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["files"][0]["path"] == "rejoin/app.py"
+    assert data["files"][0]["operations"] == ["edited", "tested"]
+    assert "rejoin/app.py" in data["summary"]["progress"]

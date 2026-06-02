@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
@@ -31,7 +31,7 @@ from .file_refs import file_ref_icon
 from .indexer import reindex
 from .resume import MissingBinary, codexia_url, launch_tmux, resume_command
 from .titler import backfill_titles
-from .transcript import load_turns
+from .transcript import Turn, load_turns
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
@@ -331,6 +331,175 @@ def _get_session_file_refs(session_id: str, limit: int = 20) -> list[dict]:
     return refs
 
 
+def _source_mtime(path: str | None) -> float | None:
+    if not path or "://" in path:
+        return None
+    try:
+        return Path(path).stat().st_mtime
+    except OSError:
+        return None
+
+
+def _turn_to_dict(turn: Turn, index: int) -> dict:
+    return {
+        "index": index,
+        "role": turn.role,
+        "text": turn.text,
+        "meta": turn.meta,
+    }
+
+
+def _sentence(text: str | None, limit: int = 220) -> str | None:
+    if not text:
+        return None
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[:limit - 1].rstrip() + "..."
+
+
+def _operation_counts(file_refs: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for ref in file_refs:
+        for op in ref.get("operations") or []:
+            counts[op] = counts.get(op, 0) + int(ref.get("mention_count") or 1)
+    return counts
+
+
+def _build_summary(row: dict, file_refs: list[dict], tail_turns: list[dict]) -> dict:
+    title = row.get("ai_title")
+    first_prompt = _sentence(row.get("first_prompt"))
+    cwd = row.get("cwd")
+    codex_summary = _sentence(row.get("codex_summary"), 360)
+
+    overall_parts = []
+    if title:
+        overall_parts.append(f"Title: {title}.")
+    if first_prompt:
+        overall_parts.append(f"Started with: {first_prompt}")
+    if cwd:
+        overall_parts.append(f"Workspace: {cwd}.")
+    if codex_summary:
+        overall_parts.append(f"Indexed summary: {codex_summary}")
+    overall = " ".join(overall_parts) or "No indexed session prompt or summary is available."
+
+    progress_parts = []
+    if codex_summary:
+        progress_parts.append(codex_summary)
+    if file_refs:
+        ops = _operation_counts(file_refs)
+        op_text = ", ".join(f"{op} {count}" for op, count in sorted(ops.items()))
+        top_files = ", ".join(ref["path_display"] for ref in file_refs[:5])
+        progress_parts.append(f"Referenced {len(file_refs)} files: {top_files}.")
+        if op_text:
+            progress_parts.append(f"File operations seen: {op_text}.")
+    notable = [
+        _sentence(turn["text"], 180)
+        for turn in tail_turns
+        if turn["role"] in {"assistant", "tool_result"} and turn.get("text")
+    ]
+    if notable:
+        progress_parts.append("Recent notable turn: " + notable[-1])
+    progress = " ".join(progress_parts) or "No progress evidence has been extracted yet."
+
+    tail = [
+        f"{turn['index']}: {turn['role']}: {_sentence(turn['text'], 240) or ''}"
+        for turn in tail_turns
+    ]
+    return {"overall": overall, "progress": progress, "tail": tail}
+
+
+def _files_for_brief(file_refs: list[dict]) -> list[dict]:
+    return [
+        {
+            "path": ref["path_display"],
+            "path_normalized": ref["path_normalized"],
+            "path_scope": ref["path_scope"],
+            "basename": ref["basename"],
+            "extension": ref["extension"],
+            "operations": ref["operations"],
+            "operation_summary": ref["operation_summary"],
+            "mention_count": ref["mention_count"],
+            "exists_now": bool(ref["exists_now"]) if ref["exists_now"] is not None else None,
+            "confidence": ref["max_confidence"],
+        }
+        for ref in file_refs
+    ]
+
+
+def _build_session_brief(row: dict, fresh: bool, tail: int) -> dict:
+    source_mtime = _source_mtime(row.get("path"))
+    indexed_mtime = row.get("mtime")
+    indexed_is_stale = (
+        source_mtime is not None
+        and indexed_mtime is not None
+        and abs(float(source_mtime) - float(indexed_mtime or 0.0)) >= 1e-6
+    )
+    if fresh:
+        turns = load_turns(row["tool"], Path(row["path"]))
+    else:
+        turns = _load_turns_cached(row["tool"], row["path"], row.get("mtime") or 0.0)
+    tail_count = max(0, tail)
+    start = max(0, len(turns) - tail_count) if tail_count else len(turns)
+    tail_turns = [_turn_to_dict(turn, idx) for idx, turn in enumerate(turns[start:], start=start)]
+    file_refs = _get_session_file_refs(row["id"], 200)
+    summary = _build_summary(row, file_refs, tail_turns)
+    return {
+        "ok": True,
+        "session_id": row["id"],
+        "tool": row["tool"],
+        "title": row.get("ai_title"),
+        "cwd": row.get("cwd"),
+        "summary": summary,
+        "freshness": {
+            "active": bool(row.get("active")),
+            "source_mtime": source_mtime,
+            "indexed_mtime": indexed_mtime,
+            "indexed_is_stale": indexed_is_stale,
+            "turn_count": len(turns),
+            "last_indexed_at": row.get("indexed_at"),
+        },
+        "files": _files_for_brief(file_refs),
+        "tail": tail_turns,
+    }
+
+
+def _brief_markdown(brief: dict) -> str:
+    freshness = brief["freshness"]
+    lines = [
+        f"# Session Brief: {brief['session_id']}",
+        "",
+        "## Overall",
+        brief["summary"]["overall"],
+        "",
+        "## Progress",
+        brief["summary"]["progress"],
+        "",
+        "## Freshness",
+        f"- active: {str(freshness['active']).lower()}",
+        f"- source_mtime: {freshness['source_mtime']}",
+        f"- indexed_mtime: {freshness['indexed_mtime']}",
+        f"- indexed_is_stale: {str(freshness['indexed_is_stale']).lower()}",
+        f"- turn_count: {freshness['turn_count']}",
+        f"- last_indexed_at: {freshness['last_indexed_at']}",
+        "",
+        "## Files",
+    ]
+    if brief["files"]:
+        for file in brief["files"]:
+            ops = ", ".join(file["operations"]) or "mentioned"
+            lines.append(f"- {file['path']} ({ops}; {file['mention_count']} mentions)")
+    else:
+        lines.append("- none")
+    lines.extend(["", "## Tail"])
+    if brief["tail"]:
+        for turn in brief["tail"]:
+            lines.append(f"- {turn['index']} `{turn['role']}`: {_sentence(turn['text'], 300) or ''}")
+    else:
+        lines.append("- none")
+    return "\n".join(lines) + "\n"
+
+
 def _group_by_cwd(sessions: list[dict]) -> list[dict]:
     pinned = [s for s in sessions if s.get("pinned")]
     others = [s for s in sessions if not s.get("pinned")]
@@ -501,6 +670,25 @@ def api_session_files(session_id: str) -> JSONResponse:
         for ref in _get_session_file_refs(session_id, 200)
     ]
     return JSONResponse({"ok": True, "session_id": session_id, "files": files})
+
+
+@app.get("/api/sessions/{session_id}/brief", response_model=None)
+def api_session_brief(
+    session_id: str,
+    fresh: bool = Query(True),
+    tail: int = Query(12, ge=0, le=200),
+    brief_format: str = Query("json", alias="format", pattern="^(json|markdown)$"),
+) -> JSONResponse | PlainTextResponse:
+    row = _get_session(session_id)
+    if not row:
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    try:
+        brief = _build_session_brief(row, fresh=fresh, tail=tail)
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    if brief_format == "markdown":
+        return PlainTextResponse(_brief_markdown(brief), media_type="text/markdown")
+    return JSONResponse(brief)
 
 
 @app.get("/api/files/search")
