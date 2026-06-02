@@ -358,12 +358,26 @@ def _sentence(text: str | None, limit: int = 220) -> str | None:
     return compact[:limit - 1].rstrip() + "..."
 
 
-def _operation_counts(file_refs: list[dict]) -> dict[str, int]:
-    counts: dict[str, int] = {}
+def _operation_signals(file_refs: list[dict]) -> list[str]:
+    signals: list[str] = []
+    seen: set[str] = set()
     for ref in file_refs:
         for op in ref.get("operations") or []:
-            counts[op] = counts.get(op, 0) + int(ref.get("mention_count") or 1)
-    return counts
+            if op not in seen:
+                seen.add(op)
+                signals.append(op)
+    return signals
+
+
+def _indexed_tail(row: dict) -> list[Turn]:
+    turns = []
+    if row.get("first_prompt"):
+        turns.append(Turn("user", row["first_prompt"], {"source": "indexed:first_prompt"}))
+    if row.get("codex_summary"):
+        turns.append(Turn("assistant", row["codex_summary"], {"source": "indexed:codex_summary"}))
+    if row.get("last_prompt") and row.get("last_prompt") != row.get("first_prompt"):
+        turns.append(Turn("user", row["last_prompt"], {"source": "indexed:last_prompt"}))
+    return turns
 
 
 def _build_summary(row: dict, file_refs: list[dict], tail_turns: list[dict]) -> dict:
@@ -387,12 +401,12 @@ def _build_summary(row: dict, file_refs: list[dict], tail_turns: list[dict]) -> 
     if codex_summary:
         progress_parts.append(codex_summary)
     if file_refs:
-        ops = _operation_counts(file_refs)
-        op_text = ", ".join(f"{op} {count}" for op, count in sorted(ops.items()))
+        ops = _operation_signals(file_refs)
+        op_text = ", ".join(ops)
         top_files = ", ".join(ref["path_display"] for ref in file_refs[:5])
         progress_parts.append(f"Referenced {len(file_refs)} files: {top_files}.")
         if op_text:
-            progress_parts.append(f"File operations seen: {op_text}.")
+            progress_parts.append(f"File operation signals: {op_text}.")
     notable = [
         _sentence(turn["text"], 180)
         for turn in tail_turns
@@ -430,20 +444,31 @@ def _files_for_brief(file_refs: list[dict]) -> list[dict]:
 def _build_session_brief(row: dict, fresh: bool, tail: int) -> dict:
     source_mtime = _source_mtime(row.get("path"))
     indexed_mtime = row.get("mtime")
-    indexed_is_stale = (
-        source_mtime is not None
-        and indexed_mtime is not None
-        and abs(float(source_mtime) - float(indexed_mtime or 0.0)) >= 1e-6
-    )
+    freshness_known = source_mtime is not None and indexed_mtime is not None
+    indexed_is_stale = None
+    if freshness_known:
+        indexed_is_stale = abs(float(source_mtime) - float(indexed_mtime or 0.0)) >= 1e-6
+    tail_error = None
+    tail_is_live = bool(fresh)
     if fresh:
-        turns = load_turns(row["tool"], Path(row["path"]))
+        try:
+            turns = load_turns(row["tool"], Path(row["path"]))
+        except Exception as e:
+            tail_error = str(e)
+            tail_is_live = False
+            turns = _indexed_tail(row)
     else:
-        turns = _load_turns_cached(row["tool"], row["path"], row.get("mtime") or 0.0)
+        try:
+            turns = _load_turns_cached(row["tool"], row["path"], row.get("mtime") or 0.0)
+        except Exception as e:
+            tail_error = str(e)
+            turns = _indexed_tail(row)
     tail_count = max(0, tail)
     start = max(0, len(turns) - tail_count) if tail_count else len(turns)
     tail_turns = [_turn_to_dict(turn, idx) for idx, turn in enumerate(turns[start:], start=start)]
     file_refs = _get_session_file_refs(row["id"], 200)
     summary = _build_summary(row, file_refs, tail_turns)
+    last_turn = tail_turns[-1] if tail_turns else None
     return {
         "ok": True,
         "session_id": row["id"],
@@ -456,9 +481,17 @@ def _build_session_brief(row: dict, fresh: bool, tail: int) -> dict:
             "source_mtime": source_mtime,
             "indexed_mtime": indexed_mtime,
             "indexed_is_stale": indexed_is_stale,
+            "tail_is_live": tail_is_live,
+            "files_are_indexed": bool(file_refs),
+            "files_may_be_stale": indexed_is_stale if file_refs else False,
+            "freshness_known": freshness_known,
             "turn_count": len(turns),
+            "last_turn_index": last_turn["index"] if last_turn else None,
+            "last_turn_role": last_turn["role"] if last_turn else None,
+            "last_turn_at": (last_turn.get("meta") or {}).get("ts") if last_turn else None,
             "last_indexed_at": row.get("indexed_at"),
         },
+        "tail_error": tail_error,
         "files": _files_for_brief(file_refs),
         "tail": tail_turns,
     }
@@ -479,8 +512,15 @@ def _brief_markdown(brief: dict) -> str:
         f"- active: {str(freshness['active']).lower()}",
         f"- source_mtime: {freshness['source_mtime']}",
         f"- indexed_mtime: {freshness['indexed_mtime']}",
-        f"- indexed_is_stale: {str(freshness['indexed_is_stale']).lower()}",
+        f"- indexed_is_stale: {freshness['indexed_is_stale']}",
+        f"- tail_is_live: {str(freshness['tail_is_live']).lower()}",
+        f"- files_are_indexed: {str(freshness['files_are_indexed']).lower()}",
+        f"- files_may_be_stale: {freshness['files_may_be_stale']}",
+        f"- freshness_known: {str(freshness['freshness_known']).lower()}",
         f"- turn_count: {freshness['turn_count']}",
+        f"- last_turn_index: {freshness['last_turn_index']}",
+        f"- last_turn_role: {freshness['last_turn_role']}",
+        f"- last_turn_at: {freshness['last_turn_at']}",
         f"- last_indexed_at: {freshness['last_indexed_at']}",
         "",
         "## Files",
@@ -492,9 +532,19 @@ def _brief_markdown(brief: dict) -> str:
     else:
         lines.append("- none")
     lines.extend(["", "## Tail"])
+    if brief.get("tail_error"):
+        lines.append(f"_Tail live-read error: {brief['tail_error']}_")
+        lines.append("")
     if brief["tail"]:
         for turn in brief["tail"]:
-            lines.append(f"- {turn['index']} `{turn['role']}`: {_sentence(turn['text'], 300) or ''}")
+            lines.append(f"### {turn['index']} · {turn['role']}")
+            ts = (turn.get("meta") or {}).get("ts")
+            if ts:
+                lines.append(f"_at {ts}_")
+            lines.append("")
+            lines.append("```text")
+            lines.append(_sentence(turn["text"], 1200) or "")
+            lines.append("```")
     else:
         lines.append("- none")
     return "\n".join(lines) + "\n"

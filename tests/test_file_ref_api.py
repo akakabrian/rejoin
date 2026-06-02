@@ -246,6 +246,10 @@ def test_api_session_brief_completed_session(monkeypatch, tmp_path):
     assert data["summary"]["overall"].startswith("Title: Live Session Brief MVP")
     assert data["freshness"]["active"] is False
     assert data["freshness"]["indexed_is_stale"] is False
+    assert data["freshness"]["freshness_known"] is True
+    assert data["freshness"]["tail_is_live"] is True
+    assert data["freshness"]["files_are_indexed"] is True
+    assert data["freshness"]["files_may_be_stale"] is False
     assert data["freshness"]["turn_count"] == 2
     assert data["freshness"]["last_indexed_at"] == "2026-01-01T00:05:00+00:00"
 
@@ -278,6 +282,7 @@ def test_api_session_brief_active_stale_session_live_reads(monkeypatch, tmp_path
     data = response.json()
     assert data["freshness"]["active"] is True
     assert data["freshness"]["indexed_is_stale"] is True
+    assert data["freshness"]["files_may_be_stale"] is True
     assert data["freshness"]["turn_count"] == 3
     assert data["tail"][-1]["text"] == "Fresh tail turn from disk."
 
@@ -298,6 +303,8 @@ def test_api_session_brief_markdown_format(monkeypatch, tmp_path):
     assert "# Session Brief: sess-brief" in response.text
     assert "## Progress" in response.text
     assert "- rejoin/app.py" in response.text
+    assert "### 0 · user" in response.text
+    assert "```text" in response.text
 
 
 def test_api_session_brief_tail_limit(monkeypatch, tmp_path):
@@ -353,3 +360,112 @@ def test_api_session_brief_includes_file_refs(monkeypatch, tmp_path):
     assert data["files"][0]["path"] == "rejoin/app.py"
     assert data["files"][0]["operations"] == ["edited", "tested"]
     assert "rejoin/app.py" in data["summary"]["progress"]
+    assert "File operation signals: edited, tested." in data["summary"]["progress"]
+
+
+def test_api_session_brief_virtual_source_freshness_unknown(monkeypatch, tmp_path):
+    db = tmp_path / "index.db"
+    init_db(db)
+    with connect(db) as conn:
+        conn.execute(
+            """
+            INSERT INTO sessions (
+                id, tool, path, cwd, first_prompt, codex_summary,
+                last_activity, mtime, indexed_at
+            ) VALUES (
+                'virtual-1', 'pi', 'agent-sessions://pi/virtual-1', '/tmp/proj',
+                'Virtual source session', 'Indexed virtual summary',
+                '2026-01-01T00:00:00+00:00', 123.0,
+                '2026-01-01T00:05:00+00:00'
+            )
+            """
+        )
+        conn.commit()
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+    monkeypatch.setattr(app_module, "load_turns", lambda tool, path: [])
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/virtual-1/brief")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["freshness"]["source_mtime"] is None
+    assert data["freshness"]["indexed_is_stale"] is None
+    assert data["freshness"]["freshness_known"] is False
+    assert data["freshness"]["files_are_indexed"] is False
+    assert data["freshness"]["files_may_be_stale"] is False
+
+
+def test_api_session_brief_live_read_failure_falls_back(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(transcript)
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+
+    def fail_load_turns(tool, path):
+        raise OSError("transcript unavailable")
+
+    monkeypatch.setattr(app_module, "load_turns", fail_load_turns)
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/brief")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tail_error"] == "transcript unavailable"
+    assert data["freshness"]["tail_is_live"] is False
+    assert data["summary"]["overall"].startswith("Title: Live Session Brief MVP")
+    assert data["files"][0]["path"] == "rejoin/app.py"
+    assert data["tail"][-1]["text"] == "Add markdown output"
+
+
+def test_api_session_brief_last_turn_metadata(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(
+        transcript,
+        extra_turns=[
+            {
+                "type": "response_item",
+                "timestamp": "2026-01-01T00:00:04+00:00",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Last visible turn"}],
+                },
+            }
+        ],
+    )
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/brief")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["freshness"]["last_turn_index"] == 2
+    assert data["freshness"]["last_turn_role"] == "assistant"
+    assert data["freshness"]["last_turn_at"] == "2026-01-01T00:00:04+00:00"
+
+
+def test_api_session_brief_files_may_be_stale_when_source_mtime_differs(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(transcript)
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript, indexed_mtime=transcript.stat().st_mtime - 60)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/brief")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["freshness"]["indexed_is_stale"] is True
+    assert data["freshness"]["files_are_indexed"] is True
+    assert data["freshness"]["files_may_be_stale"] is True

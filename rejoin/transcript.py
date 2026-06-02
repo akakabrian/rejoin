@@ -72,14 +72,15 @@ def iter_codex_turns(path: Path) -> Iterator[Turn]:
         elif it in ("function_call", "tool_use"):
             args = item.get("arguments") or item.get("input") or {}
             yield Turn("tool_use", _fmt_args(args),
-                       {"name": item.get("name") or item.get("tool_name")})
+                       {"name": item.get("name") or item.get("tool_name"), "ts": evt.get("timestamp")})
         elif it == "local_shell_call":
-            yield Turn("tool_use", _fmt_args(item.get("action", {})), {"name": "shell"})
+            yield Turn("tool_use", _fmt_args(item.get("action", {})),
+                       {"name": "shell", "ts": evt.get("timestamp")})
         elif it == "function_call_output":
             output = item.get("output", "")
             if isinstance(output, dict):
                 output = output.get("content", "") or json.dumps(output)
-            yield Turn("tool_result", str(output)[:4000], {})
+            yield Turn("tool_result", str(output)[:4000], {"ts": evt.get("timestamp")})
 
 
 def iter_openclaw_turns(path: Path) -> Iterator[Turn]:
