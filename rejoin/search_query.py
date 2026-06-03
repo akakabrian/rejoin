@@ -21,6 +21,8 @@ _INLINE_FILTER_RE = re.compile(
     r'(?P<key>file|basename|ext|op|active|pinned|tool|cwd):(?P<value>"[^"]+"|\'[^\']+\'|\S+)',
     re.IGNORECASE,
 )
+_BOOL_TRUE = {"1", "true", "yes", "on"}
+_BOOL_FALSE = {"0", "false", "no", "off"}
 
 
 def _unquote_filter_value(value: str) -> str:
@@ -28,6 +30,15 @@ def _unquote_filter_value(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
+
+
+def _parse_bool_filter(value: str) -> bool | None:
+    lowered = value.lower()
+    if lowered in _BOOL_TRUE:
+        return True
+    if lowered in _BOOL_FALSE:
+        return False
+    return None
 
 
 def parse_search_query(q: str | None) -> ParsedSearchQuery:
@@ -38,14 +49,18 @@ def parse_search_query(q: str | None) -> ParsedSearchQuery:
     parts: list[str] = []
     last = 0
     for match in _INLINE_FILTER_RE.finditer(q):
-        parts.append(q[last:match.start()])
         key = match.group("key").lower()
         if key == "op":
             key = "operation"
         value = _unquote_filter_value(match.group("value"))
         if key in {"active", "pinned"}:
-            filters[key] = value.lower() in {"1", "true", "yes", "on"}
+            bool_value = _parse_bool_filter(value)
+            if bool_value is None:
+                continue
+            parts.append(q[last:match.start()])
+            filters[key] = bool_value
         else:
+            parts.append(q[last:match.start()])
             filters[key] = value
         last = match.end()
     parts.append(q[last:])

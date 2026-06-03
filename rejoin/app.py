@@ -19,6 +19,7 @@ from markupsafe import Markup, escape
 from .brief import (
     brief_markdown,
     build_session_brief,
+    indexed_tail,
     source_mtime,
     source_path_exists,
     turn_to_dict,
@@ -161,6 +162,7 @@ def _fetch_sessions(
     active: bool | None = None,
     pinned: bool | None = None,
     limit: int = 200,
+    offset: int = 0,
 ) -> list[dict]:
     parsed = parse_search_query(q)
     q = parsed.q
@@ -176,7 +178,7 @@ def _fetch_sessions(
     cwd = cwd or parsed.cwd
 
     where: list[str] = []
-    params: dict = {"limit": limit}
+    params: dict = {"limit": limit, "offset": offset}
     if tool:
         where.append("s.tool = :tool")
         params["tool"] = tool
@@ -228,7 +230,7 @@ def _fetch_sessions(
         ORDER BY (p.pinned_at IS NOT NULL) DESC,
                  p.pinned_at DESC,
                  s.last_activity DESC
-        LIMIT :limit
+        LIMIT :limit OFFSET :offset
     """
 
     now_epoch = datetime.now(UTC).timestamp()
@@ -299,14 +301,15 @@ def _load_session_tail(row: dict, *, fresh: bool, tail: int) -> dict:
             turns = _load_turns_cached(row["tool"], row["path"], row.get("mtime") or 0.0)
     except Exception as e:
         tail_error = str(e)
-        tail_source = "unavailable"
+        tail_source = "indexed_fallback"
         warnings.append("tail_read_failed")
-        turns = []
+        turns = indexed_tail(row)
     tail_count = max(0, tail)
     start = max(0, len(turns) - tail_count) if tail_count else len(turns)
     tail_turns = [turn_to_dict(turn, idx) for idx, turn in enumerate(turns[start:], start=start)]
     return {
         "ok": True,
+        "generated_at": utcnow_iso(),
         "warnings": warnings,
         "session_id": row["id"],
         "tail_source": tail_source,
@@ -459,6 +462,7 @@ def api_sessions(
     active: bool | None = Query(None),
     pinned: bool | None = Query(None),
     limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ) -> JSONResponse:
     try:
         sessions = _fetch_sessions(
@@ -472,6 +476,7 @@ def api_sessions(
             active,
             pinned,
             limit,
+            offset,
         )
     except SearchQuerySyntaxError:
         return JSONResponse({"ok": False, "error": "query syntax"}, status_code=400)
@@ -492,34 +497,49 @@ def api_projects(limit: int = Query(200, ge=1, le=500)) -> JSONResponse:
     with connect() as conn:
         rows = conn.execute(
             """
-            SELECT s.cwd,
-                   COUNT(*) as session_count,
-                   MAX(s.last_activity) as last_activity,
-                   SUM(COALESCE(fc.file_count, 0)) as file_ref_count,
-                   GROUP_CONCAT(DISTINCT s.tool) as tools
+            SELECT s.id, s.cwd, s.tool, s.last_activity,
+                   COALESCE(fc.file_count, 0) as file_count
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id, COUNT(*) as file_count
                 FROM session_file_refs
                 GROUP BY session_id
             ) fc ON fc.session_id = s.id
-            GROUP BY s.cwd
-            ORDER BY last_activity DESC
-            LIMIT :limit
-            """,
-            {"limit": limit},
+            ORDER BY s.last_activity DESC
+            """
         ).fetchall()
-    projects = [
-        {
-            "cwd": row["cwd"],
-            "label": short_cwd(row["cwd"]) if row["cwd"] else "(no cwd)",
-            "session_count": row["session_count"],
-            "file_ref_count": row["file_ref_count"] or 0,
-            "last_activity": row["last_activity"],
-            "tools": sorted((row["tools"] or "").split(",")) if row["tools"] else [],
-        }
-        for row in rows
-    ]
+    now_epoch = datetime.now(UTC).timestamp()
+    running = _running_ids()
+    by_cwd: dict[str | None, dict] = {}
+    for row in rows:
+        cwd = row["cwd"]
+        project = by_cwd.setdefault(cwd, {
+            "cwd": cwd,
+            "label": short_cwd(cwd) if cwd else "(no cwd)",
+            "session_count": 0,
+            "active_count": 0,
+            "file_ref_count": 0,
+            "last_activity": None,
+            "tools": set(),
+        })
+        project["session_count"] += 1
+        project["file_ref_count"] += row["file_count"] or 0
+        project["tools"].add(row["tool"])
+        if (
+            project["last_activity"] is None
+            or iso_to_epoch(row["last_activity"]) > iso_to_epoch(project["last_activity"])
+        ):
+            project["last_activity"] = row["last_activity"]
+        if _is_active(row["last_activity"], now_epoch, running, row["id"]):
+            project["active_count"] += 1
+    projects = sorted(
+        (
+            {**project, "tools": sorted(project["tools"])}
+            for project in by_cwd.values()
+        ),
+        key=lambda project: iso_to_epoch(project["last_activity"]),
+        reverse=True,
+    )[:limit]
     return JSONResponse({"ok": True, "projects": projects})
 
 
@@ -687,7 +707,11 @@ def api_session_file_refs_rebuild(session_id: str) -> JSONResponse:
             with transaction(conn):
                 replace_session_file_refs(conn, row["id"], events)
     except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+        log.exception("file-ref rebuild failed: session_id=%s", session_id)
+        return JSONResponse(
+            {"ok": False, "error": "file_ref_rebuild_failed", "detail": str(e)},
+            status_code=500,
+        )
     return JSONResponse({
         "ok": True,
         "session_id": session_id,

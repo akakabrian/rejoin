@@ -18,6 +18,14 @@ def test_parse_search_query_extracts_inline_filters():
     assert parsed.cwd == "/tmp/proj"
 
 
+def test_parse_search_query_preserves_invalid_bool_filters_as_text():
+    parsed = parse_search_query("active:maybe pinned:nope bug")
+
+    assert parsed.active is None
+    assert parsed.pinned is None
+    assert parsed.q == "active:maybe pinned:nope bug"
+
+
 def test_parse_search_query_keeps_plain_query():
     parsed = parse_search_query("tailscale startup error")
 

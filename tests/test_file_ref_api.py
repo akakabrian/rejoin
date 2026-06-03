@@ -275,6 +275,21 @@ def test_api_sessions_json_uses_same_filters_and_inline_query(monkeypatch, tmp_p
     assert data["sessions"][0]["file_count"] == 1
 
 
+def test_api_sessions_json_supports_offset_pagination(monkeypatch, tmp_path):
+    db = tmp_path / "index.db"
+    _build_db(db)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+
+    client = TestClient(app_module.app)
+    first = client.get("/api/sessions", params={"limit": 1, "offset": 0}).json()
+    second = client.get("/api/sessions", params={"limit": 1, "offset": 1}).json()
+
+    assert len(first["sessions"]) == 1
+    assert len(second["sessions"]) == 1
+    assert first["sessions"][0]["id"] != second["sessions"][0]["id"]
+
+
 def test_api_session_json_normalizes_metadata(monkeypatch, tmp_path):
     db = tmp_path / "index.db"
     _build_db(db)
@@ -673,6 +688,29 @@ def test_api_session_file_refs_rebuild(monkeypatch, tmp_path):
         assert row["path_normalized"] == "rejoin/app.py"
 
 
+def test_api_session_file_refs_rebuild_failure_has_stable_error(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-rebuild.jsonl"
+    _write_codex_transcript(transcript)
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(
+        app_module,
+        "load_turns",
+        lambda tool, path: (_ for _ in ()).throw(OSError("cannot read transcript")),
+    )
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/sessions/sess-brief/file-refs/rebuild")
+
+    assert response.status_code == 500
+    data = response.json()
+    assert data["ok"] is False
+    assert data["error"] == "file_ref_rebuild_failed"
+    assert data["detail"] == "cannot read transcript"
+    assert "Traceback" not in response.text
+
+
 def test_api_session_brief_tail_zero_has_no_tail_metadata(monkeypatch, tmp_path):
     transcript = tmp_path / "rollout-brief.jsonl"
     _write_codex_transcript(transcript)
@@ -721,10 +759,56 @@ def test_api_session_tail(monkeypatch, tmp_path):
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
+    assert data["generated_at"]
     assert data["tail_source"] == "live"
     assert data["turn_count"] == 3
     assert len(data["tail"]) == 1
     assert data["tail"][0]["text"] == "Tail question"
+
+
+def test_api_session_tail_live_failure_uses_indexed_fallback(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(transcript)
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+    monkeypatch.setattr(
+        app_module,
+        "load_turns",
+        lambda tool, path: (_ for _ in ()).throw(OSError("tail unavailable")),
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/tail", params={"fresh": "true"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["generated_at"]
+    assert data["tail_source"] == "indexed_fallback"
+    assert data["tail_error"] == "tail unavailable"
+    assert "tail_read_failed" in data["warnings"]
+    assert data["tail"][0]["meta"] == {"source": "indexed:first_prompt"}
+    assert data["tail"][0]["text"] == "Build live session brief"
+
+
+def test_api_session_tail_zero(monkeypatch, tmp_path):
+    transcript = tmp_path / "rollout-brief.jsonl"
+    _write_codex_transcript(transcript)
+    db = tmp_path / "index.db"
+    _build_brief_db(db, transcript)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: set())
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/sessions/sess-brief/tail", params={"tail": 0})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["generated_at"]
+    assert data["turn_count"] == 2
+    assert data["tail"] == []
 
 
 def test_api_projects_summary(monkeypatch, tmp_path):
@@ -743,11 +827,26 @@ def test_api_projects_summary(monkeypatch, tmp_path):
             "cwd": "/tmp/proj",
             "label": "/tmp/proj",
             "session_count": 2,
+            "active_count": 0,
             "file_ref_count": 2,
             "last_activity": "2026-01-02T00:00:00+00:00",
             "tools": ["claude", "codex"],
         }
     ]
+
+
+def test_api_projects_active_count_uses_running_ids(monkeypatch, tmp_path):
+    db = tmp_path / "index.db"
+    _build_db(db)
+    monkeypatch.setattr(app_module, "connect", lambda: connect(db))
+    monkeypatch.setattr(app_module, "_running_ids", lambda: {"sess-1"})
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/projects")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["projects"][0]["active_count"] == 1
 
 
 def test_api_diagnostics_counts(monkeypatch, tmp_path):

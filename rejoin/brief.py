@@ -21,7 +21,10 @@ def source_mtime(path: str | None) -> float | None:
 def source_path_exists(path: str | None) -> bool | None:
     if not path or "://" in path:
         return None
-    return Path(path).exists()
+    try:
+        return Path(path).exists()
+    except OSError:
+        return None
 
 
 def sentence(text: str | None, limit: int = 220) -> str | None:
